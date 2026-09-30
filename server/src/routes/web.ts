@@ -16,7 +16,7 @@ import type {
   Strategy,
   UpdateScope,
 } from '../../../shared/types.ts'
-import type { RuntimeRow } from '../model.ts'
+import type { PendingSwitchRow, RuntimeRow } from '../model.ts'
 import { ApiError, conflict, notFound, readBody, sendJson, type Router } from '../http.ts'
 import type { LiveHub } from '../live.ts'
 import { OFFLINE_AFTER_MS, isOnline, toDevice, toGroup, toNodeSource, toProxyNode } from '../model.ts'
@@ -50,7 +50,7 @@ function runtimeItems(
   groupById: Map<string, Group>,
   deviceById: Map<string, Device>,
   nodes: ProxyNode[],
-  pendingByGroup: Map<string, store.PendingSwitchRow> = new Map(),
+  pendingByGroup: Map<string, PendingSwitchRow> = new Map(),
 ): Array<
   GroupRuntime & {
     groupName: string

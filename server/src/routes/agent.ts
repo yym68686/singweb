@@ -10,7 +10,7 @@ import { tokenHash } from '../auth.ts'
 import type { AgentIdentity, Router } from '../http.ts'
 import { ApiError, readBody, sendJson, unauthorized } from '../http.ts'
 import type { LiveHub } from '../live.ts'
-import type { ReportPayload, ReportedNode } from '../model.ts'
+import type { NodeSourceRow, ReportPayload, ReportedNode } from '../model.ts'
 import { toDevice } from '../model.ts'
 import * as store from '../store.ts'
 
@@ -214,7 +214,7 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
    * force 表示现在就得拉：用户在网页上点了「立即刷新」，或者这个订阅还没拉过。
    * 没给这个标记时 Agent 自己按节奏来，不必每轮都去订阅站要一次。
    */
-  const sourceRef = (row: store.NodeSourceRow) => ({
+  const sourceRef = (row: NodeSourceRow) => ({
     id: row.id,
     name: row.name,
     url: row.url,
