@@ -91,6 +91,11 @@ export class Reporter {
     await this.api.ack(ids)
   }
 
+  /** 报告一条待办执行失败，服务端据此累加次数 */
+  async failPending(id: string, error: string): Promise<{ abandoned: boolean }> {
+    return this.api.failPending(id, error)
+  }
+
   fetchSource(source: SourceRef): Promise<string> {
     return this.api.fetchSource(source)
   }

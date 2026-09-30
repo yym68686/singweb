@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { useDevices, useGroups, useNodes, useTargets } from './hooks'
-import { DIRECT, type Device, type Group, type ProxyNode, type Target } from './types'
+import { useDevices, useGroups, useNodes, useSources, useTargets } from './hooks'
+import { DIRECT, type Device, type Group, type NodeSource, type ProxyNode, type Target } from './types'
 
 /** 页面上常用的配置数据，附带按 id 查找的表 */
 export interface Catalog {
@@ -8,10 +8,13 @@ export interface Catalog {
   nodes: ProxyNode[]
   groups: Group[]
   targets: Target[]
+  /** 订阅地址；只有节点页用得到 */
+  sources: NodeSource[]
   device: Map<string, Device>
   node: Map<string, ProxyNode>
   group: Map<string, Group>
   target: Map<string, Target>
+  source: Map<string, NodeSource>
 }
 
 const byId = <T extends { id: string }>(xs: T[]) => new Map(xs.map((x) => [x.id, x]))
@@ -21,24 +24,27 @@ export function useCatalog() {
   const nodes = useNodes()
   const groups = useGroups()
   const targets = useTargets()
+  const sources = useSources()
 
   const data = useMemo<Catalog | undefined>(() => {
-    if (!devices.data || !nodes.data || !groups.data || !targets.data) return undefined
+    if (!devices.data || !nodes.data || !groups.data || !targets.data || !sources.data) return undefined
     return {
       devices: devices.data,
       nodes: nodes.data,
       groups: groups.data,
       targets: targets.data,
+      sources: sources.data,
       device: byId(devices.data),
       node: byId(nodes.data),
       group: byId(groups.data),
       target: byId(targets.data),
+      source: byId(sources.data),
     }
-  }, [devices.data, nodes.data, groups.data, targets.data])
+  }, [devices.data, nodes.data, groups.data, targets.data, sources.data])
 
-  const error = devices.error ?? nodes.error ?? groups.error ?? targets.error
+  const error = devices.error ?? nodes.error ?? groups.error ?? targets.error ?? sources.error
   const retry = () => {
-    for (const q of [devices, nodes, groups, targets]) if (q.error) void q.refetch()
+    for (const q of [devices, nodes, groups, targets, sources]) if (q.error) void q.refetch()
   }
   return { data, error, retry }
 }

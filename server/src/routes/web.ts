@@ -50,7 +50,15 @@ function runtimeItems(
   groupById: Map<string, Group>,
   deviceById: Map<string, Device>,
   nodes: ProxyNode[],
-): Array<GroupRuntime & { groupName: string; selection: Selection; reportedAt: string }> {
+  pendingByGroup: Map<string, store.PendingSwitchRow> = new Map(),
+): Array<
+  GroupRuntime & {
+    groupName: string
+    selection: Selection
+    reportedAt: string
+    pendingSwitch: PendingSwitch | null
+  }
+> {
   const fallbackReportedAt = new Date().toISOString()
   return rows.flatMap((row) => {
     const group = groupById.get(row.group_id)
@@ -62,10 +70,12 @@ function runtimeItems(
       activeNodeId: row.active_node_id,
       pinnedNodeId: row.pinned_node_id,
       nodes: row.nodes,
+      availableNodeIds: row.available_node_ids ?? null,
       lastRoundAt: row.last_round_at ? row.last_round_at.toISOString() : null,
       lastSwitch: row.last_switch,
       reportedAt: row.reported_at.toISOString(),
     }
+    const pending = pendingByGroup.get(row.group_id)
     return [
       {
         ...toGroupRuntime(group, snapshot, {
@@ -77,9 +87,34 @@ function runtimeItems(
         groupName: group.name,
         selection: group.selection,
         reportedAt: snapshot.reportedAt,
+        /*
+         * 排队中和已失败的切换。
+         *
+         * 点完节点网页只说"正在切换"，如果设备没执行，用户没有任何办法知道——之前就是这样，
+         * 一条永远失败的待办在库里躺了 45 分钟，网页上却显示一切正常。这里把它带出来，
+         * 设备页可以显示"正在切换，等待设备执行"或者失败原因加重试按钮。
+         */
+        pendingSwitch: pending
+          ? {
+              id: pending.id,
+              nodeId: pending.node_id,
+              attempts: pending.attempts,
+              lastError: pending.last_error,
+              failedAt: pending.failed_at ? pending.failed_at.toISOString() : null,
+            }
+          : null,
       },
     ]
   })
+}
+
+/** 网页上要显示的待办状态，字段名按接口习惯用驼峰 */
+interface PendingSwitch {
+  id: string
+  nodeId: string | null
+  attempts: number
+  lastError: string | null
+  failedAt: string | null
 }
 
 export function registerWebRoutes(router: Router, live: LiveHub): void {
@@ -188,9 +223,31 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
       const node = await store.findNodeRow(nodeId)
       if (!node) throw notFound('找不到这个节点。')
       if (!node.enabled) throw conflict(`节点「${node.tag}」现在是停用状态，先启用它。`)
-      // 逐个挑选的候选列表之外的节点不能选，否则设备那边根本不会把它算进来
+
+      // 逐个挑选的候选列表之外的节点不能选，设备那边不会把它算进来
       if (group.candidates.mode === 'list' && !group.candidates.nodeIds.includes(nodeId)) {
         throw new ApiError(400, '这个节点不属于该分组的候选节点。', 'nodeId')
+      }
+
+      /*
+       * 光在候选列表里还不够：切换是让设备把 selector 切到这个节点，而 selector
+       * 只认得自己 outbounds 里列出的名字。设备上的配置文件是用户自己维护的，
+       * 可能比网页上的候选列表旧（比如刚改过订阅、或者粘贴的还是旧片段），
+       * 这时候切过去必然失败——sing-box 直接返回 not found。
+       *
+       * 所以这里拿设备实际上报的列表再挡一道，把"点了没反应"变成"点的时候就说清楚"。
+       * availableNodeIds 是 null 时说明 Agent 没读到（Clash API 不通、设备没上报过
+       * 这个分组），这时不拦：宁可让它排队等设备自己报错，也不要因为一次读取失败
+       * 就断定节点不存在——那样 Clash API 一抖动，用户就会发现什么都点不动。
+       */
+      const runtime = await store.findRuntimeRow(params.deviceId, params.groupId)
+      const known = runtime?.available_node_ids ?? null
+      if (known && !known.includes(nodeId)) {
+        throw conflict(
+          `节点「${node.tag}」不在「${device.name}」上「${group.selectorTag}」的候选列表里。` +
+            `设备上的 sing-box 配置需要重新生成并重启，网页上的节点列表才会跟上。`,
+          'nodeId',
+        )
       }
     }
 
@@ -204,6 +261,37 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     live.update(['runtimes'])
     sendJson(res, 200, { ok: true, nodeId })
   })
+
+  /**
+   * 重试一条放弃了的切换。
+   *
+   * 失败多半是因为设备上的 sing-box 配置跟网页对不上——用户重新生成配置重启之后，
+   * 同样的操作就能成功了。所以这里不重新排队一条新的待办，而是把原来那条的次数清零
+   * 让它重新下发，这样失败原因和节点都还在，用户点一下就行，不用回去重新选节点。
+   */
+  router.post(
+    '/devices/:deviceId/groups/:groupId/pending/:id/retry',
+    async ({ res, params }) => {
+      const device = await store.findDevice(params.deviceId)
+      if (!device) throw notFound('找不到这台设备。')
+      const group = await store.findGroup(params.groupId)
+      if (!group) throw notFound('找不到这个分组。')
+
+      const revived = await store.revivePendingSwitch(params.id)
+      if (!revived) throw notFound('这条切换已经不在队列里了，重新选一次节点。')
+
+      await store.insertEvent({
+        kind: 'switch',
+        severity: 'info',
+        deviceId: params.deviceId,
+        groupId: params.groupId,
+        nodeId: null,
+        message: `在网页上重新尝试了「${group.name}」的切换`,
+      })
+      live.update(['runtimes', 'events'])
+      sendJson(res, 200, { ok: true })
+    },
+  )
 
   // ---------------------------------------------------------------- 节点
 
@@ -264,6 +352,22 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     if (!updated) throw notFound('找不到这个订阅。')
     live.update(['nodes'])
     sendJson(res, 200, { source: toNodeSource(updated) })
+  })
+
+  /**
+   * 让设备重新拉一次订阅。
+   *
+   * 服务端自己不去联网取订阅——订阅链接和 token 不该离开服务端，但也不该由服务端去访问；
+   * 真正取内容的一直是设备上的 Agent。这里只打个时间戳，Agent 下一轮 bootstrap 看到
+   * 就知道该刷新了，然后照常把结果报回来。
+   */
+  router.post('/sources/:id/refresh', async ({ res, params }) => {
+    const row = await store.findSource(params.id)
+    if (!row) throw notFound('找不到这个订阅。')
+    if (!row.enabled) throw conflict(`订阅「${row.name}」现在是停用状态，先启用它。`)
+    await store.requestSourceRefresh(params.id)
+    live.update(['nodes'])
+    sendJson(res, 200, { ok: true, requestedAt: new Date().toISOString() })
   })
 
   /**
@@ -387,15 +491,17 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
 
   router.get('/runtime', async ({ res, url }) => {
     const deviceId = url.searchParams.get('deviceId')?.trim() || undefined
-    const [rows, groups, devices, nodes] = await Promise.all([
+    const [rows, groups, devices, nodes, pending] = await Promise.all([
       store.listRuntimeRows(deviceId),
       store.listGroups(),
       store.listDevices(),
       store.listNodes(),
+      // 待办也是按设备查的，跟运行状态同一维度，省得前端再发一个请求
+      store.listPendingByGroup(deviceId ?? null),
     ])
     const groupById = new Map(groups.map((g) => [g.id, g]))
     const deviceById = new Map(devices.map((d) => [d.id, d]))
-    sendJson(res, 200, { items: runtimeItems(rows, groupById, deviceById, nodes) })
+    sendJson(res, 200, { items: runtimeItems(rows, groupById, deviceById, nodes, pending) })
   })
 
   // ---------------------------------------------------------------- 探测结果

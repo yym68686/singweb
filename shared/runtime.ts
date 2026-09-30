@@ -25,6 +25,8 @@ export interface RuntimeSnapshot {
   pinnedNodeId: string | null
   /** Agent 报上来的候选节点健康状态；手动分组不探测，是空的 */
   nodes: NodeHealth[]
+  /** 设备上 selector 实际认得的节点；null 表示 Agent 没读出来 */
+  availableNodeIds: string[] | null
   lastRoundAt: string | null
   lastSwitch: SwitchRecord | null
   reportedAt: string
@@ -141,6 +143,8 @@ export function toGroupRuntime(
     eligibleNodeIds: eligibleNodeIds(group, snapshot, ctx),
     // 手动分组不探测，历史健康数据就算库里有也当没有——它随时可能被改成自动分组
     nodes: group.selection === 'manual' ? [] : snapshot.nodes,
+    // 设备认得哪些节点跟分组怎么选节点无关，手动分组一样要报，切换时要用它校验
+    availableNodeIds: snapshot.availableNodeIds,
     lastRoundAt: group.selection === 'manual' ? null : snapshot.lastRoundAt,
     lastSwitch: snapshot.lastSwitch,
   }
@@ -155,6 +159,8 @@ export function emptyRuntime(group: Group, ctx: RuntimeContext): GroupRuntime {
       activeNodeId: null,
       pinnedNodeId: null,
       nodes: [],
+      // 还没上报过，设备上认不认得节点是未知的，不是"设备上一个都没有"
+      availableNodeIds: null,
       lastRoundAt: null,
       lastSwitch: null,
       reportedAt: ctx.fallbackReportedAt,

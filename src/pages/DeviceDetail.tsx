@@ -1,9 +1,9 @@
 import { useId } from 'react'
 import { Link, useParams } from 'react-router'
-import { ChevronDown, CircleMinus, ClockFading, Laptop, Pencil, Pin, Radar, Split } from 'lucide-react'
+import { ChevronDown, CircleMinus, ClockFading, Laptop, Pencil, Pin, Radar, RotateCw, Split } from 'lucide-react'
 import { groupsOf, outletName, useCatalog, type Catalog } from '../api/catalog'
 import { errorMessage } from '../api/errors'
-import { useEvents, useNow, useProbeCells, useProbeNow, useRuntimes, useSetPin } from '../api/hooks'
+import { useEvents, useNow, useProbeCells, useProbeNow, useRetryPending, useRuntimes, useSetPin } from '../api/hooks'
 import { DIRECT, type Device, type Group, type GroupRuntime, type NodeHealth, type ProbeDetail } from '../api/types'
 import { Badge, HealthBadge, RuntimeBadge } from '../components/Badge'
 import { Button, ButtonLink } from '../components/Button'
@@ -201,6 +201,7 @@ function GroupPanel({ d, g, rt, c, now }: Omit<PanelProps, 'rt'> & { rt?: GroupR
           <div className={s.strip}>
             <RouteStrip runtime={rt} group={g} nodes={c.node} targets={c.target} />
           </div>
+          <PendingNote d={d} g={g} rt={rt} c={c} />
           <ConnectionNote g={g} rt={rt} c={c} now={now} />
           {manual ? <CandidateTable g={g} rt={rt} c={c} /> : <NodeTable d={d} g={g} rt={rt} c={c} />}
         </div>
@@ -310,6 +311,60 @@ function NodePicker({ d, g, rt, c }: PanelProps) {
         <span id={`${id}-hint`} className="visually-hidden">
           {hint}
         </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 排队中和已失败的切换。
+ *
+ * 点完节点网页立刻显示"已切到 X"是不诚实的：真正切过去的是设备，得等它下一轮上报
+ * 才作数。设备没执行的时候，之前网页上什么也看不出来——一条永远失败的待办在库里
+ * 躺了 45 分钟，界面显示一切正常。这里把队列里的那条亮出来。
+ */
+function PendingNote({ d, g, rt, c }: PanelProps) {
+  const retry = useRetryPending()
+  const toast = useToast()
+  const p = rt.pendingSwitch
+  if (!p) return null
+
+  const target = p.nodeId ? outletName(p.nodeId, c) : '自动选择'
+  const failed = Boolean(p.failedAt)
+
+  return (
+    <div className={cx(s.pending, failed && s.pendingFailed)}>
+      <p className={s.pendingText} role={failed ? 'alert' : 'status'}>
+        {failed ? (
+          <>
+            切到 <strong>{keepNames(target)}</strong> 失败，已经试了 {p.attempts} 次，不再重试。
+            {p.lastError && <span className={s.pendingError}>{p.lastError}</span>}
+          </>
+        ) : (
+          <>
+            正在切到 <strong>{keepNames(target)}</strong>，等待「{d.name}」执行。
+            {p.attempts > 0 && `已经失败 ${p.attempts} 次，还在重试。`}
+          </>
+        )}
+      </p>
+      {failed && (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={RotateCw}
+          pending={retry.isPending}
+          onClick={() =>
+            retry.mutate(
+              { deviceId: d.id, groupId: g.id, pendingId: p.id },
+              {
+                onSuccess: () => toast('已重新排队，等设备下一轮执行'),
+                onError: (err) => toast(errorMessage(err), 'crit'),
+              },
+            )
+          }
+        >
+          重试
+        </Button>
       )}
     </div>
   )

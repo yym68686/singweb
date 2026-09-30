@@ -125,6 +125,7 @@ export const runtimeLabel: Record<RuntimeState, string> = {
 
 export const eventKindLabel: Record<EventKind, string> = {
   switch: '切换节点',
+  'switch-failed': '切换失败',
   'node-down': '节点不可用',
   'node-up': '节点恢复',
   'all-down': '全部不可用',

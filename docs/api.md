@@ -29,9 +29,15 @@
 | GET | `/devices` | | `Device[]` |
 | GET | `/devices/{id}` | | `Device` |
 | POST | `/devices/{id}/probe` | | `204` |
+| POST | `/devices/{deviceId}/groups/{groupId}/pending/{id}/retry` | | `{ "ok": true }` |
 | POST | `/devices/{deviceId}/groups/{groupId}/pin` | `{ "nodeId": string \| null }` | `GroupRuntime` |
 | GET | `/nodes` | | `ProxyNode[]` |
 | PATCH | `/nodes/{id}` | `{ "enabled": boolean }` | `ProxyNode` |
+| GET | `/sources` | | `NodeSource[]` |
+| POST | `/sources` | `{ "name": string, "url": string }` | `NodeSource` |
+| PATCH | `/sources/{id}` | `{ "name"?: string, "url"?: string, "enabled"?: boolean }` | `NodeSource` |
+| POST | `/sources/{id}/refresh` | | `{ "ok": true, "requestedAt": string }` |
+| DELETE | `/sources/{id}` | | `204` |
 | GET | `/targets` | | `Target[]` |
 | POST | `/targets` | `TargetInput` | `Target` |
 | PUT | `/targets/{id}` | `TargetInput` | `Target` |
@@ -102,6 +108,33 @@
 
 固定期间的行为见[固定](#固定)，手动选择的分组见[手动选择](#手动选择)。
 
+### 待执行的操作
+
+网页上点的切换不会立刻生效：管理服务把这一条写进队列，Agent 下一轮上报时领走、执行、然后确认。
+每次 `POST /agent/report` 的响应里带 `pending`，是这台设备还没执行的条目。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | |
+| `deviceId` | string | |
+| `groupId` | string | |
+| `nodeId` | string \| null | 要切到的节点；`null` 表示取消固定或不再指定节点 |
+| `reason` | `web-pin` \| `web-unpin` \| `manual-probe` | 这条待办从哪来 |
+| `attempts` | number | Agent 报告过几次失败 |
+| `lastError` | string \| null | 最近一次失败的原因 |
+| `failedAt` | string \| null | 达到重试上限的时间；有值时这条已经放弃，不再发给 Agent |
+| `createdAt` | string | |
+
+设备页的每个分组上用 `pendingSwitch` 字段带出来，可能的值：
+
+- `queued`：已排队，等设备下一轮上报。
+- `switching`：Agent 报告过一次失败，还会再重试。
+- `failed`：连续 3 次失败后放弃，同时记一条 `switch-failed` 事件，事件里带着最后一次的原因。
+
+`POST /devices/{deviceId}/groups/{groupId}/pending/{id}/retry` 把一条 `failed` 的待办退回队列，
+清掉失败计数，记一条 `switch` 事件。适合修好原因之后（比如把节点加回 selector）再试一次。
+这条待办已经被清掉或删除时返回 `404`。
+
 ## 节点
 
 | 字段 | 类型 | 说明 |
@@ -128,6 +161,36 @@
 - 节点在各个自动分组里的健康状态从“待探测”开始。
 - 停用时清掉的固定和选择不会恢复。
 - 没有选过节点的手动分组，如果它排在启用的候选节点第一位，出口会改回它，记“没有选过节点，改走第一个启用的候选节点 HK-01”。
+
+## 订阅来源
+
+订阅来源是一条订阅链接。链接和它里面的 token 只存在管理服务的数据库里，由 Agent 在下一轮上报时领走，
+管理服务自己不去访问订阅站——真正联网取内容的一直是设备上的 Agent。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | |
+| `name` | string | 订阅名称，最多 60 个字 |
+| `url` | string | 完整的订阅链接，含 token |
+| `enabled` | boolean | 停用后设备不再拉取它，已经导入的节点保留 |
+| `lastFetchedAt` | string \| null | 最近一次拉取成功的时间 |
+| `lastError` | string \| null | 最近一次拉取失败的原因 |
+| `nodeCount` | number | 最近一次拉取解析出的节点数 |
+| `createdAt` | string | |
+| `refreshRequested` | boolean | 用户点了「立即刷新」，设备还没来领 |
+
+`url` 只以 http 或 https 开头、必须有主机名，否则返回 `400`。
+
+**拉取的节奏由 Agent 掌握。** Agent 每 6 小时重新取一次订阅内容，失败后 5 分钟重试；
+用户在网页上点了「立即刷新」，或者这个订阅从没拉过，Agent 就立刻取一次，不等这个周期。
+`POST /sources/{id}/refresh` 只打一个时间戳，不自己去联网，所以响应里没有新节点：
+要等设备下一轮上报，`lastFetchedAt` 和 `nodeCount` 才会变。停用的订阅调它返回 `409`。
+
+**删除订阅会连它导入的节点一起删。** 这些节点正被分组当候选节点用时，那台设备上会少一截出口，
+界面在确认框里提示数量和影响。
+
+**界面显示地址时会隐去查询参数的值**，例如 `https://example.com/sub?token=••••`。
+完整的链接仍然会被完整地存进数据库、完整地发给 Agent；隐去只是为了截图和录屏不泄露 token。
 
 ## 探测目标
 
@@ -568,6 +631,19 @@ data: {"type":"reset"}
 - `clash_api` 监听 `clashApi`。
 
 socks 用户的密码和 Clash API 的 secret 由 Agent 在本机生成，不经过管理服务。配置用到了 `sniff`、`route`、`reject` 规则动作，需要 sing-box 1.11 或更新的版本。
+
+### 订阅
+
+- Agent 从 `GET /agent/bootstrap` 和 `GET /agent/sources` 拿订阅列表，返回的每一项是 `{ id, name, url, force }`。
+  链接只在管理和设备之间传递，设备不必知道它属于谁。
+- `force` 为真时立刻取一次：用户在网页上点了「立即刷新」（`refresh_requested_at` 有值），
+  或者这个订阅从没拉过（`last_fetched_at` 为空）。为假时 Agent 自己按 6 小时的节奏判断。
+- 取订阅用的是 Node 直接发的请求，不走本机代理——订阅站通常国内可直连。
+  User-Agent 伪装成 `v2rayN/6.31`：多数订阅站按 UA 分流，不认识的 UA 直接 403，
+  而 Clash、sing-box 这些客户端的 UA 换回来的是 YAML 或 JSON，只有链接列表这一种格式 Agent 会解析。
+- 内容以 `{` 或 `[` 开头时按 JSON 解析（Clash / sing-box 的 proxies），否则按订阅链接列表解析。
+- 结果用 `POST /agent/sources/{id}/result` 回报，节点一起交上去。
+  拉取失败时不带节点上报，服务端因此不会清空这个订阅已经导入的节点——订阅站临时挂了不代表节点没了。
 
 ### 探测
 

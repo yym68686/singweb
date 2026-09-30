@@ -45,6 +45,47 @@
   padding: 0 var(--sp-4) var(--sp-4);
 }
 
+/*
+ * 待办状态条：排队中的切换和失败的切换。
+ * 跟探测结果那种常驻信息不同，这个只在有事发生时才出现，所以给它一条左边框，
+ * 在整屏的卡片里一眼能看出来。
+ */
+.pending {
+  margin: 0 var(--sp-4) var(--sp-4);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn, var(--ink-3));
+  border-radius: var(--r-2);
+  background: var(--surface-2, transparent);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.pendingFailed {
+  border-left-color: var(--crit, #c0392b);
+}
+
+.pendingText {
+  flex: 1 1 22rem;
+  min-width: 0;
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+}
+
+.pendingText strong {
+  color: var(--ink-1);
+  font-weight: 500;
+}
+
+.pendingError {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  word-break: break-word;
+}
+
 /* 候选节点表 */
 
 .nodes {

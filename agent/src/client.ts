@@ -88,6 +88,18 @@ export class ApiClient {
     await this.request('POST', '/agent/ack', { ids })
   }
 
+  /**
+   * 报告一条待办执行失败。服务端据此累加次数，够多了就放弃。
+   * 不报的话它会一直重试——这是有意的（暂时性故障会自愈），
+   * 但永久性故障需要有个了断，否则网页上永远显示"正在切换"。
+   */
+  async failPending(id: string, error: string): Promise<{ abandoned: boolean }> {
+    const result = asRecord(
+      await this.request('POST', `/agent/pending/${encodeURIComponent(id)}/fail`, { error }),
+    )
+    return { abandoned: Boolean(result.abandoned) }
+  }
+
   /** 最新一轮的待办。每次上报都会带回来，这里用于启动时补一次 */
   async bootstrap(): Promise<Bootstrap> {
     const result = asRecord(await this.request('GET', '/agent/bootstrap'))
@@ -186,6 +198,11 @@ export interface SourceRef {
   id: string
   name: string
   url: string
+  /**
+   * 用户在网页上点了「立即刷新」，或者这个订阅还没拉过。
+   * 为假时 Agent 可以自己决定要不要跳过——每轮都去拉一次订阅太浪费。
+   */
+  force?: boolean
 }
 
 export interface Bootstrap {

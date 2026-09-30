@@ -69,3 +69,59 @@
   font-weight: 600;
   margin-right: 0.5em;
 }
+
+/* 订阅来源列表：一项一个订阅，左边一条线把同一项里的几行圈在一起 */
+.sources {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.source {
+  display: grid;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong, var(--line));
+  border-radius: var(--r-input);
+  background: var(--panel-2);
+}
+
+/* 停用的订阅整体压暗，一眼能跟启用的分开 */
+.sourceOff {
+  opacity: 0.65;
+}
+
+.sourceHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+/* 订阅链接可能很长，截断显示，完整内容在 title 里 */
+.sourceUrl {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+
+.sourceMeta {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+.sourceError {
+  display: block;
+  color: var(--crit, #c0392b);
+  overflow-wrap: anywhere;
+}
+
+.sourceActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 2px;
+}

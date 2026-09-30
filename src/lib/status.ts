@@ -59,6 +59,7 @@ export const severityLook: Record<Severity, StatusLook> = {
 
 export const eventIcon: Record<EventKind, LucideIcon> = {
   switch: ArrowRightLeft,
+  'switch-failed': TriangleAlert,
   'node-down': CircleX,
   'node-up': CircleCheck,
   'all-down': OctagonX,

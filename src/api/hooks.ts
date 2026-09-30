@@ -14,6 +14,7 @@ export const keys = {
   devices: ['devices'] as const,
   device: (id: string) => ['devices', id] as const,
   nodes: ['nodes'] as const,
+  sources: ['sources'] as const,
   targets: ['targets'] as const,
   groups: ['groups'] as const,
   group: (id: string) => ['groups', id] as const,
@@ -62,6 +63,8 @@ export const useDevices = () => useQuery({ queryKey: keys.devices, queryFn: () =
 export const useDevice = (id: string) =>
   useQuery({ queryKey: keys.device(id), queryFn: () => api.getDevice(id), retry: false })
 export const useNodes = () => useQuery({ queryKey: keys.nodes, queryFn: () => api.getNodes() })
+export const useSources = () =>
+  useQuery({ queryKey: keys.sources, queryFn: () => api.getSources() })
 export const useTargets = () => useQuery({ queryKey: keys.targets, queryFn: () => api.getTargets() })
 export const useGroups = () => useQuery({ queryKey: keys.groups, queryFn: () => api.getGroups() })
 export const useGroup = (id: string | undefined) =>
@@ -174,6 +177,48 @@ export function useSetPin() {
   return useMutation({
     mutationFn: (v: { deviceId: string; groupId: string; nodeId: string | null }) =>
       api.setPin(v.deviceId, v.groupId, v.nodeId),
+    onSuccess: () => invalidate('runtimes', 'events'),
+  })
+}
+
+/** 新建或修改订阅。新建时带 refresh 表示存下之后立刻让设备拉一次 */
+export function useSaveSource() {
+  const invalidate = useInvalidate()
+  return useMutation({
+    mutationFn: (v: {
+      id: string | null
+      name?: string
+      url?: string
+      enabled?: boolean
+      refresh?: boolean
+    }) => api.saveSource(v.id, v),
+    onSuccess: () => invalidate('nodes', 'devices', 'runtimes'),
+  })
+}
+
+export function useDeleteSource() {
+  const invalidate = useInvalidate()
+  return useMutation({
+    mutationFn: (id: string) => api.deleteSource(id),
+    onSuccess: () => invalidate('nodes', 'devices', 'runtimes'),
+  })
+}
+
+/** 让设备重新拉一次订阅。不立刻失效缓存：结果要等设备上报才回来 */
+export function useRefreshSource() {
+  const invalidate = useInvalidate()
+  return useMutation({
+    mutationFn: (id: string) => api.refreshSource(id),
+    onSuccess: () => invalidate('nodes', 'devices'),
+  })
+}
+
+/** 重试一条放弃了的切换 */
+export function useRetryPending() {
+  const invalidate = useInvalidate()
+  return useMutation({
+    mutationFn: (v: { deviceId: string; groupId: string; pendingId: string }) =>
+      api.retryPending(v.deviceId, v.groupId, v.pendingId),
     onSuccess: () => invalidate('runtimes', 'events'),
   })
 }

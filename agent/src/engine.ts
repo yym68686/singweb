@@ -23,7 +23,7 @@ import { candidateIds } from '../../shared/candidates.ts'
 import { probeTarget, type ProbeContext } from './probe.ts'
 import { applyRound, pickActive, type NodeOpinion } from './health.ts'
 import { openProbeRuntime, type ProbeRuntime } from './runtime.ts'
-import { parseSubscriptionBody, toReportedNode, type PendingSwitch } from './client.ts'
+import { parseSubscriptionBody, toReportedNode, type PendingSwitch, type SourceRef } from './client.ts'
 import type { Reporter } from './reporter.ts'
 import { ClashApi } from './singbox.ts'
 import type { AgentState } from './config.ts'
@@ -31,6 +31,11 @@ import type { AgentState } from './config.ts'
 /** 一轮探测最多同时开这么多连接，避免把本机端口用完 */
 const PROBE_CONCURRENCY = 8
 const PROBE_HISTORY_MAX = 40
+
+/** 订阅内容多久重新取一次。没拉过和用户点了刷新的不受这个限制 */
+const SOURCE_REFRESH_MS = 6 * 60 * 60 * 1000
+/** 拉失败的订阅多久后重试 */
+const SOURCE_RETRY_MS = 5 * 60 * 1000
 
 /** 一个分组在本机的运行状态，只活在内存里，重启后重新探测 */
 interface GroupState {
@@ -94,7 +99,9 @@ export class Engine {
     await this.probeAll(snapshot.groups, snapshot.targets)
     await this.applyPending(snapshot.pending)
 
-    const answer = await this.reporter.report(this.buildReport(snapshot.groups))
+    // 切换执行完了再读 selector 成员，这样上报的是这一轮切换之后的结果
+    const members = await this.selectorMembersOf(snapshot.groups)
+    const answer = await this.reporter.report(this.buildReport(snapshot.groups, members))
     // 事件交上去就不必再留，下一轮重新攒
     this.events = []
     return answer.reportIntervalSec
@@ -155,9 +162,22 @@ export class Engine {
 
   private runtimeTags = ''
 
-  /** 逐个订阅去取。链接只在服务端，Agent 拿到的是完整的订阅地址 */
-  private async syncSources(sources: { id: string; name: string; url: string }[]): Promise<void> {
-    for (const source of sources) {
+  /**
+   * 逐个订阅去取。链接只在服务端，Agent 拿到的是完整的订阅地址。
+   *
+   * 不是每轮都拉：订阅内容基本不变，报间隔是 15 秒，每轮都拉等于对订阅站
+   * 每分钟四次请求，很多站会直接把 IP 封掉。没拉过的（force）或者用户在网页上
+   * 点了「立即刷新」（force）才去取，其余按自己的节奏。
+   */
+  private async syncSources(sources: SourceRef[]): Promise<void> {
+    const now = Date.now()
+    const wanted = sources.filter(
+      (s) => s.force || now - (this.sourceFetchedAt.get(s.id) ?? 0) >= SOURCE_REFRESH_MS,
+    )
+    // 这轮没打算拉的，先把时间戳留成上一轮的，下面按结果更新
+    for (const source of wanted) {
+      // 先记上时间再拉：拉的过程中又轮到下一轮循环的话，不会重复发起
+      this.sourceFetchedAt.set(source.id, now)
       try {
         const body = await this.reporter.fetchSource(source)
         const nodes = parseSubscriptionBody(body)
@@ -168,9 +188,14 @@ export class Engine {
           err instanceof Error ? err.message : String(err),
           [],
         )
+        // 失败了早点重试，不然要等一整个周期才再试一次
+        this.sourceFetchedAt.set(source.id, now - SOURCE_REFRESH_MS + SOURCE_RETRY_MS)
       }
     }
   }
+
+  /** 每个订阅上一次去取的时间。只活在内存里，重启后重新拉一遍 */
+  private readonly sourceFetchedAt = new Map<string, number>()
 
   /**
    * 探测一轮。手动分组不探测——它的意义就是"我说用哪个就用哪个"。
@@ -394,18 +419,71 @@ export class Engine {
         )
         acked.push(item.id)
       } catch (err) {
-        // 没成功就不 ack，下一轮还会领到，用户能在网页上看到它一直没生效
-        console.error(
-          `切换「${group.name}」失败：`,
-          err instanceof Error ? err.message : String(err),
-        )
+        /*
+         * 失败要报上去，不能只是不 ack。
+         *
+         * 不 ack 的话服务器下一轮还会把这一条发下来——对暂时性故障这是好事，重试几次
+         * 自己就好了。但对永久性故障（节点不在 selector 的 outbounds 里、分组被删了）
+         * 它会一直重试到天荒地老，网页上永远显示"正在切换"，而失败原因只有这台机器的
+         * 日志里有，用户看不到。
+         *
+         * 报上去之后服务端累计次数，够了就放弃并把原因写进事件，网页上变成"切换失败"，
+         * 由用户决定重试还是撤掉。
+         */
+        const message = err instanceof Error ? err.message : String(err)
+        console.error(`切换「${group.name}」失败：`, message)
+        try {
+          await this.reporter.failPending(item.id, message)
+        } catch (reportErr) {
+          // 连失败都报不上去（网络断了）。这一条下一轮还会领到，已经记过日志了，不重复刷屏
+          console.error(
+            '上报切换失败时出错：',
+            reportErr instanceof Error ? reportErr.message : String(reportErr),
+          )
+        }
       }
     }
 
     if (acked.length) await this.reporter.ack(acked)
   }
 
-  private buildReport(groups: Group[]): unknown {
+  /**
+   * 问设备上那个 selector 认得哪些节点。
+   *
+   * 网页上的候选列表是数据库里的，设备上的在 sing-box 配置文件里，两边可能对不上：
+   * 片段是旧的、手动删过节点、或者设备重启时没加载成功。切换只能切到设备认得的
+   * 节点上，所以把这个列表报上去，网页就能在用户点之前先说清楚。
+   *
+   * 读不出来时返回 null 而不是空数组：空数组会被网页当成"设备上一个都不认得"，
+   * 然后拦下所有切换；而这里只是 Clash API 暂时不通，不该让用户点不动任何东西。
+   */
+  private async selectorMembers(group: Group): Promise<string[] | null> {
+    try {
+      const selector = await this.clash.getSelector(group.selectorTag)
+      if (!selector) return null
+      // selector 里列的是 tag，网页认的是节点 id
+      const idOf = new Map(this.nodes.map((n) => [n.tag, n.id]))
+      return selector.all.map((tag) => idOf.get(tag) ?? tag)
+    } catch (err) {
+      console.error(
+        `读取「${group.name}」的候选节点失败：`,
+        err instanceof Error ? err.message : String(err),
+      )
+      return null
+    }
+  }
+
+  /** 每个分组的 selector 成员，按分组 id 索引；null 表示这次没读出来 */
+  private async selectorMembersOf(groups: Group[]): Promise<Map<string, string[] | null>> {
+    const entries = await runLimited(
+      groups.map((group) => async () => [group.id, await this.selectorMembers(group)] as const),
+      // 本机接口，开太多并发没意义，还容易打满 sing-box 的连接数
+      4,
+    )
+    return new Map(entries)
+  }
+
+  private buildReport(groups: Group[], members: Map<string, string[] | null>): unknown {
     return {
       device: {
         id: this.state.deviceId,
@@ -435,6 +513,8 @@ export class Engine {
           activeNodeId: state?.activeNodeId ?? null,
           pinnedNodeId: state?.pinnedNodeId ?? null,
           nodes: state ? [...state.healths.values()] : [],
+          // 设备上这个 selector 认得的节点，网页拿它校验切换
+          availableNodeIds: members.get(group.id) ?? null,
           lastRoundAt: state?.lastRoundAt ?? null,
           lastSwitch: state?.lastSwitch ?? null,
         }

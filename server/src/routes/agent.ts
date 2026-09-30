@@ -171,22 +171,60 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
   }, 'agent')
 
   /**
-   * 拉取订阅。订阅链接只存在服务端，由服务端去取，设备不必知道链接和 token。
-   * 取回来的内容原样交给 Agent，用什么协议解析由 shared 里的解析器决定。
+   * 报告一次切换失败。
+   *
+   * Agent 执行失败时不会 ack，这一条会被反复领走。没有这个接口的话，一个永远
+   * 不会成功的操作（比如节点不在设备上的 selector 里）就会每 15 秒重试一次，
+   * 而且网页上完全看不出来。记满次数后服务端放弃，写一条事件，网页上显示为失败。
    */
+  router.post('/agent/pending/:id/fail', async ({ req, res, params, device }) => {
+    if (!device) throw unauthorized('设备凭据不对，请重新接入。')
+    const input = asRecord(await readBody(req))
+    const error = typeof input.error === 'string' ? input.error.trim() : ''
+    const row = await store.failPendingSwitch(params.id, error || '切换失败，没有说明原因。')
+    // 待办可能已经被用户在网页上撤掉了，那不是错误
+    if (!row) {
+      sendJson(res, 200, { ok: true, abandoned: false })
+      return
+    }
+
+    // 到上限就写一条事件：它在事件页留下痕迹，而不是无声消失
+    if (row.failed_at) {
+      const group = await store.findGroup(row.group_id)
+      const node = row.node_id ? await store.findNodeRow(row.node_id) : null
+      const target = node ? `「${node.tag}」` : '直连'
+      await store.insertEvent({
+        kind: 'switch-failed',
+        severity: 'warn',
+        deviceId: device.id,
+        groupId: row.group_id,
+        nodeId: row.node_id,
+        message:
+          `「${group?.name ?? row.group_id}」切到 ${target} 连续 ${row.attempts} 次失败，已放弃：` +
+          row.last_error,
+      })
+      live.update(['events'])
+    }
+    live.update(['runtimes'])
+    sendJson(res, 200, { ok: true, abandoned: Boolean(row.failed_at), attempts: row.attempts })
+  }, 'agent')
+
+  /**
+   * 拉取订阅。订阅链接只存在服务端，由服务端交给 Agent，设备不必知道链接和 token。
+   * force 表示现在就得拉：用户在网页上点了「立即刷新」，或者这个订阅还没拉过。
+   * 没给这个标记时 Agent 自己按节奏来，不必每轮都去订阅站要一次。
+   */
+  const sourceRef = (row: store.NodeSourceRow) => ({
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    force: Boolean(row.refresh_requested_at) || !row.last_fetched_at,
+  })
+
   router.get('/agent/sources', async ({ res, device }) => {
     if (!device) throw unauthorized('设备凭据不对，请重新接入。')
     const rows = await store.listSources()
-    sendJson(res, 200, {
-      items: rows
-        .filter((row) => row.enabled)
-        .map((row) => ({
-          id: row.id,
-          name: row.name,
-          url: row.url,
-          lastFetchedAt: row.last_fetched_at ? row.last_fetched_at.toISOString() : null,
-        })),
-    })
+    sendJson(res, 200, { items: rows.filter((row) => row.enabled).map(sourceRef) })
   }, 'agent')
 
   /** 设备拉完订阅后回报结果，服务端记下节点数和出错原因 */
@@ -231,11 +269,7 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
       groups: groups.filter((g) => g.deviceIds.includes(device.id)),
       targets,
       nodes,
-      sources: sources.filter((s) => s.enabled).map((s) => ({
-        id: s.id,
-        name: s.name,
-        url: s.url,
-      })),
+      sources: sources.filter((s) => s.enabled).map(sourceRef),
       pins: Object.fromEntries(
         [...pinned].filter(([, nodeId]) => nodeId),
       ),

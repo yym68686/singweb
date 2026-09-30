@@ -131,6 +131,8 @@ export interface NodeSourceRow {
   last_fetched_at: Date | null
   last_error: string | null
   node_count: number
+  /** 有值表示用户在网页上点了「立即刷新」，等设备领走 */
+  refresh_requested_at: Date | null
   created_at: Date
 }
 
@@ -190,6 +192,8 @@ export interface RuntimeRow {
   active_node_id: string | null
   pinned_node_id: string | null
   nodes: NodeHealth[]
+  /** 设备上 selector 实际认得的节点。null 表示没读出来，跟空数组不是一回事 */
+  available_node_ids: string[] | null
   last_round_at: Date | null
   last_switch: SwitchRecord | null
   reported_at: Date
@@ -226,6 +230,12 @@ export interface PendingSwitchRow {
   group_id: string
   node_id: string | null
   reason: string
+  /** Agent 试过几次。失败一次加一，到上限就不再下发 */
+  attempts: number
+  /** 最近一次失败的原因，Agent 报上来的原文 */
+  last_error: string | null
+  /** 有值表示已经放弃重试，网页上显示为失败 */
+  failed_at: Date | null
   created_at: Date
 }
 
@@ -288,6 +298,7 @@ export function toNodeSource(row: NodeSourceRow): NodeSource {
     lastError: row.last_error,
     nodeCount: row.node_count,
     createdAt: row.created_at.toISOString(),
+    refreshRequested: Boolean(row.refresh_requested_at),
   }
 }
 
@@ -434,6 +445,11 @@ export interface ReportedRuntime {
   activeNodeId: string | null
   pinnedNodeId?: string | null
   nodes: NodeHealth[]
+  /**
+   * 设备上这个 selector 实际列在 outbounds 里的节点。
+   * Agent 读不到时（Clash API 不通、selector 不存在）留空，服务端存成 null
+   */
+  availableNodeIds?: string[] | null
   lastRoundAt?: string | null
   lastSwitch?: SwitchRecord | null
 }

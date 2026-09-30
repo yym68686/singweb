@@ -228,6 +228,18 @@ export interface GroupRuntime {
   eligibleNodeIds: string[]
   /** 各候选节点的健康状态；手动分组不探测，为空 */
   nodes: NodeHealth[]
+  /**
+   * 设备上这个 selector 实际认得的节点，由 Agent 从 Clash API 的 all 读出来。
+   *
+   * 网页上的候选列表来自数据库，设备上的来自 sing-box 配置文件，两边可能对不上
+   * （片段是旧的、手动删过节点、或者设备上重启时加载失败）。切换只能切到设备认得的
+   * 节点上，所以这个列表是校验的依据。
+   *
+   * null 和空数组是两回事：空数组是"设备上确实一个都没有"，null 是"没读出来"
+   * （Clash API 不通、selector 不存在）。后者不能拿来拦用户，否则 Clash API 一抖动
+   * 就满屏误报。
+   */
+  availableNodeIds: string[] | null
   lastRoundAt: string | null
   lastSwitch: SwitchRecord | null
 }
@@ -281,6 +293,7 @@ export interface ProbeCell {
 
 export type EventKind =
   | 'switch'
+  | 'switch-failed'
   | 'node-down'
   | 'node-up'
   | 'all-down'
@@ -361,6 +374,8 @@ export interface NodeSource {
   /** 最近一次拉取解析出的节点数 */
   nodeCount: number
   createdAt: string
+  /** 网页上点了「立即刷新」，等设备下一轮来领 */
+  refreshRequested: boolean
 }
 
 export type UserRole = 'admin' | 'viewer'

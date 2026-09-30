@@ -183,3 +183,31 @@ create table if not exists pending_switches (
 );
 
 create index if not exists pending_switches_device_idx on pending_switches (device_id, created_at);
+
+-- ---------------------------------------------------------------- 增量补列
+--
+-- 下面的列是后来加的，用 alter ... if not exists 追加，已存在的库重启时自动补上，
+-- 不必手工迁移，也不必重建表。
+
+-- 设备上那个 selector 实际列在 outbounds 里的节点，由 Agent 通过 Clash API 读出来上报。
+-- 网页上的候选列表来自数据库，设备上的来自 sing-box 配置文件，两边可能不一致
+-- （比如粘贴的片段是旧的、或者手动删过节点），这个字段就是让网页知道真实情况的。
+-- null 表示 Agent 没读到（Clash API 不通或 selector 不存在），跟空数组是两回事：
+-- 空数组是"设备上确实一个都没有"，null 是"不知道"，后者不该拿来拦用户。
+alter table group_runtime
+  add column if not exists available_node_ids jsonb;
+
+-- 待办执行失败时的重试记录。没有上限的话，一个永远不会成功的待办
+-- 会每 15 秒重试一次，直到天荒地老，而且失败得悄无声息。
+alter table pending_switches
+  add column if not exists attempts integer not null default 0;
+alter table pending_switches
+  add column if not exists last_error text;
+-- 有值表示已经放弃重试。列表接口不再把它下发给 Agent，网页上显示为失败
+alter table pending_switches
+  add column if not exists failed_at timestamptz;
+
+-- 网页上点了"立即刷新"时打上的时间戳，Agent 下一轮 bootstrap 领走。
+-- 服务端自己不联网拉订阅：订阅链接只该下发给设备，由设备去取。
+alter table node_sources
+  add column if not exists refresh_requested_at timestamptz;

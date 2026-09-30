@@ -8,6 +8,7 @@ import type {
   GroupInput,
   GroupRuntime,
   LiveMessage,
+  NodeSource,
   ProbeCell,
   ProxyNode,
   Target,
@@ -152,6 +153,13 @@ export class HttpApiClient implements ApiClient {
   probeNow(deviceId: string) {
     return this.request<void>('POST', `/devices/${encodeURIComponent(deviceId)}/probe`)
   }
+  retryPending(deviceId: string, groupId: string, pendingId: string) {
+    return this.request<void>(
+      'POST',
+      `/devices/${encodeURIComponent(deviceId)}/groups/${encodeURIComponent(groupId)}` +
+        `/pending/${encodeURIComponent(pendingId)}/retry`,
+    )
+  }
 
   getEvents(q: EventQuery) {
     return this.request<EventPage>(
@@ -166,6 +174,30 @@ export class HttpApiClient implements ApiClient {
         limit: q.limit,
       })}`,
     )
+  }
+
+  getSources() {
+    return items(this.request<{ items: NodeSource[] }>('GET', '/sources'))
+  }
+  async saveSource(
+    id: string | null,
+    input: { name?: string; url?: string; enabled?: boolean; refresh?: boolean },
+  ) {
+    // refresh 不是订阅自身的字段，它是「让设备重新拉一次」的动作，走另一个接口
+    const { refresh, ...patch } = input
+    const result = await this.request<{ source: NodeSource }>(
+      id ? 'PATCH' : 'POST',
+      id ? `/sources/${encodeURIComponent(id)}` : '/sources',
+      patch,
+    )
+    if (refresh && result.source) await this.refreshSource(result.source.id)
+    return result.source
+  }
+  deleteSource(id: string) {
+    return this.request<void>('DELETE', `/sources/${encodeURIComponent(id)}`)
+  }
+  refreshSource(id: string) {
+    return this.request<void>('POST', `/sources/${encodeURIComponent(id)}/refresh`)
   }
 
   /** 优先用 SSE；连不上时退回定时刷新 */

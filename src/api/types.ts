@@ -43,9 +43,25 @@ export interface ProxyNode {
   source: string
 }
 
+/** 一个订阅地址；节点页按来源分组显示，也用来导入节点 */
+export interface NodeSource {
+  id: string
+  name: string
+  /** 完整的订阅链接，含 token。只在管理和设备之间传递 */
+  url: string
+  enabled: boolean
+  /** 最近一次拉取的结果 */
+  lastFetchedAt: string | null
+  lastError: string | null
+  /** 最近一次拉取解析出的节点数 */
+  nodeCount: number
+  createdAt: string
+  /** 点了「立即刷新」，还没被设备领走 */
+  refreshRequested: boolean
+}
+
 /** 分组规则的类型，也就是探测目标的类型 */
 export type TargetKind = 'ssh' | 'http' | 'tcp'
-
 /** SSH 探测做到哪一步：读到 SSH 标识，或完成 SSH 握手（均不登录） */
 export type SshLevel = 'banner' | 'handshake'
 
@@ -224,8 +240,35 @@ export interface GroupRuntime {
   eligibleNodeIds: string[]
   /** 各候选节点的健康状态；手动分组不探测，为空 */
   nodes: NodeHealth[]
+  /**
+   * 设备上这个 selector 实际认得的节点，Agent 从 Clash API 读出来上报。
+   * 网页上的候选列表来自数据库，设备上的来自 sing-box 配置文件，两边可能对不上；
+   * 切换只能切到设备认得的节点上，所以它是校验依据。
+   * null 表示没读出来（Clash API 不通），空数组表示设备上确实一个都没有——两者不能混。
+   */
+  availableNodeIds: string[] | null
   lastRoundAt: string | null
   lastSwitch: SwitchRecord | null
+  /**
+   * 排队中或已失败的切换。
+   *
+   * 点完节点网页只能显示"正在切换"，设备要是没执行，用户没别的办法知道。
+   * 这里把队列里那条待办带出来：还在等设备时显示进度，放弃重试后显示失败原因和重试按钮。
+   */
+  pendingSwitch: PendingSwitch | null
+}
+
+/** 网页上显示的待办状态；重试的次数上限由服务端决定 */
+export interface PendingSwitch {
+  id: string
+  /** 要切到的节点；null 表示恢复自动选择 */
+  nodeId: string | null
+  /** 设备试过几次 */
+  attempts: number
+  /** 最近一次失败的原因，设备报上来的原文 */
+  lastError: string | null
+  /** 有值表示服务端已经放弃重试，网页上显示为失败 */
+  failedAt: string | null
 }
 
 /**
@@ -277,6 +320,7 @@ export interface ProbeCell {
 
 export type EventKind =
   | 'switch'
+  | 'switch-failed'
   | 'node-down'
   | 'node-up'
   | 'all-down'

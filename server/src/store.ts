@@ -165,9 +165,22 @@ export async function recordFetch(
   result: { error: string | null; nodeCount: number },
 ): Promise<void> {
   await run(
-    'update node_sources set last_fetched_at = now(), last_error = $2, node_count = $3 where id = $1',
+    `update node_sources
+        set last_fetched_at = now(), last_error = $2, node_count = $3, refresh_requested_at = null
+      where id = $1`,
     [id, result.error, result.nodeCount],
   )
+}
+
+/**
+ * 网页上点了「立即刷新」。
+ *
+ * 只打时间戳，不发网络请求：取订阅的一直是设备上的 Agent，链接和 token 不离开服务端，
+ * 但服务端也不该替设备去访问——服务端在机房里，跟用户平时走的那条路不一样，
+ * 有些订阅站只对客户端放行。Agent 下一轮 bootstrap 看到这个标记就去刷新。
+ */
+export async function requestSourceRefresh(id: string): Promise<void> {
+  await run('update node_sources set refresh_requested_at = now() where id = $1', [id])
 }
 
 /**
@@ -621,11 +634,13 @@ export async function findRuntimeRow(
  */
 export async function saveRuntime(deviceId: string, r: ReportedRuntime): Promise<void> {
   await run(
-    `insert into group_runtime (device_id, group_id, active_node_id, nodes, last_round_at, last_switch, reported_at)
-     values ($1, $2, $3, $4, $5, $6, now())
+    `insert into group_runtime
+       (device_id, group_id, active_node_id, nodes, available_node_ids, last_round_at, last_switch, reported_at)
+     values ($1, $2, $3, $4, $5, $6, $7, now())
      on conflict (device_id, group_id) do update set
        active_node_id = excluded.active_node_id,
        nodes = excluded.nodes,
+       available_node_ids = excluded.available_node_ids,
        last_round_at = excluded.last_round_at,
        last_switch = excluded.last_switch,
        reported_at = now()`,
@@ -634,6 +649,8 @@ export async function saveRuntime(deviceId: string, r: ReportedRuntime): Promise
       r.groupId,
       r.activeNodeId,
       JSON.stringify(r.nodes ?? []),
+      // 没上报这个字段时存 null，不要存成空数组：空数组的意思是"设备上一个都不认得"
+      r.availableNodeIds ? JSON.stringify(r.availableNodeIds) : null,
       r.lastRoundAt ? new Date(r.lastRoundAt) : null,
       r.lastSwitch ? JSON.stringify(r.lastSwitch) : null,
     ],
@@ -911,11 +928,89 @@ export async function queuePendingSwitch(row: {
   return created
 }
 
+/**
+ * 下发给 Agent 的待办。
+ *
+ * 已经放弃重试的（failed_at 有值）不再下发——不然一个永远不会成功的操作会每
+ * 15 秒重试一次，直到天荒地老，而且失败得悄无声息。它们留在库里，网页上显示为失败，
+ * 由用户决定重试还是撤掉。
+ */
 export function listPendingSwitches(deviceId: string): Promise<PendingSwitchRow[]> {
+  return many<PendingSwitchRow>(
+    `select * from pending_switches
+      where device_id = $1 and failed_at is null
+      order by created_at`,
+    [deviceId],
+  )
+}
+
+/** 全部待办，含已放弃的，网页用来显示"正在切换"和"切换失败" */
+export function listAllPendingSwitches(deviceId: string): Promise<PendingSwitchRow[]> {
   return many<PendingSwitchRow>(
     'select * from pending_switches where device_id = $1 order by created_at',
     [deviceId],
   )
+}
+
+/**
+ * 还没执行的待办，按分组 id 索引，给网页显示"正在切换"和"切换失败"用。
+ *
+ * 不传设备就是所有设备的。分组 id 是主要的查法：网页是按设备页里的分组卡片显示的，
+ * 一个分组在一台设备上最多同时有一条待办（新的一次切换会先把旧的清掉）。
+ */
+export function listPendingByGroup(
+  deviceId: string | null,
+): Promise<Map<string, PendingSwitchRow>> {
+  const rows = deviceId
+    ? many<PendingSwitchRow>(
+        'select * from pending_switches where device_id = $1 order by created_at',
+        [deviceId],
+      )
+    : many<PendingSwitchRow>('select * from pending_switches order by created_at')
+  return rows.then((list) => {
+    const byGroup = new Map<string, PendingSwitchRow>()
+    for (const row of list) {
+      // 一条分组有多条待办时，留下最新的那条——用户刚点的那次才算数
+      const previous = byGroup.get(row.group_id)
+      if (!previous || row.created_at >= previous.created_at) byGroup.set(row.group_id, row)
+    }
+    return byGroup
+  })
+}
+
+/** 一次失败试多少次就放弃。15 秒一轮的话，5 次大约一分多钟，够区分暂时和永久了 */
+export const PENDING_MAX_ATTEMPTS = 5
+
+/**
+ * 记一次失败。到上限就置 failed_at，从此不再下发。
+ * 返回置位后的行，调用方据此决定要不要写事件。
+ */
+export async function failPendingSwitch(
+  id: string,
+  error: string,
+): Promise<PendingSwitchRow | null> {
+  const row = await one<PendingSwitchRow>(
+    `update pending_switches
+        set attempts = attempts + 1,
+            last_error = $2,
+            failed_at = case when attempts + 1 >= $3 then now() else failed_at end
+      where id = $1
+      returning *`,
+    [id, error.slice(0, 500), PENDING_MAX_ATTEMPTS],
+  )
+  return row
+}
+
+/** 网页上点"重试"：清掉失败标记，重新排队 */
+export async function revivePendingSwitch(id: string): Promise<boolean> {
+  const row = await one<PendingSwitchRow>(
+    `update pending_switches
+        set attempts = 0, last_error = null, failed_at = null
+      where id = $1
+      returning id`,
+    [id],
+  )
+  return Boolean(row)
 }
 
 export async function clearPendingSwitches(ids: string[]): Promise<void> {

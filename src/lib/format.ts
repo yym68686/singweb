@@ -99,3 +99,20 @@ export function joinZh(items: string[]): string {
   const last = items[items.length - 1]
   return `${head}${/[0-9A-Za-z]$/.test(head) ? ' ' : ''}和${gapBefore(last)}${last}`
 }
+
+/**
+ * 订阅地址里的凭据打码，用于网页上显示。
+ *
+ * 订阅链接本身就是凭证：拿到整条链接的人可以在任何客户端上用它取节点，
+ * 而它会被写进截图、录屏和别人的屏幕。界面上只需要认出「是哪一个订阅」，
+ * 不需要认出里面的 token，所以查询参数的值一律隐掉，只留参数名。
+ *
+ * 用字符串替换而不是 URL 解析：解析会把百分号编码解码再重新编码，
+ * 显示出来的地址就和用户粘进去的不是同一条了，地址栏里比对时反而让人怀疑。
+ */
+export function maskUrl(url: string): string {
+  return url.replace(
+    /([?&])([A-Za-z0-9_.\-]+)=([^&#\s]*)/g,
+    (_, sep: string, key: string) => `${sep}${key}=••••`,
+  )
+}
