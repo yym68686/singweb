@@ -1,0 +1,219 @@
+.toolbar > :first-child {
+  min-width: 0;
+}
+
+.summaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dash {
+  color: var(--ink-3);
+}
+
+/* 刷新中的旧数据：稍微变淡 */
+.busy {
+  opacity: 0.6;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+/* 矩阵：第一列（节点）横向滚动时固定在左边 */
+
+.matrix th.corner,
+.matrix .rowHead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 168px;
+  box-shadow: inset -1px 0 0 var(--line);
+}
+
+/* 左边被挡住的内容在固定列下面，所以滚动阴影不画在外框边上，画在固定列的右边 */
+.scroll {
+  --shade-start: none;
+}
+
+.matrix th.corner::after,
+.matrix .rowHead::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: 16px;
+  background: linear-gradient(to right, var(--scroll-shade), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+/* data-more-start 由 ScrollFrame 加在外框上 */
+[data-more-start] .matrix th.corner::after,
+[data-more-start] .matrix .rowHead::after {
+  opacity: 1;
+}
+
+.matrix .rowHead {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: var(--fs-14);
+  font-weight: 400;
+  white-space: normal;
+  vertical-align: top;
+}
+
+.matrix tbody tr:first-child .rowHead {
+  border-top: 0;
+}
+
+.nodeTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.outletNote {
+  margin-top: 2px;
+  color: var(--accent-ink);
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
+
+.colHead {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.colHead .mono {
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+
+.colName {
+  color: var(--ink);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+
+/* 目标的类型：图标加文字 */
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.kind svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.offline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.offline svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+/* 单元格 */
+
+.cell {
+  min-width: 180px;
+}
+
+.failed {
+  background: color-mix(in srgb, var(--crit-soft) 60%, transparent);
+}
+
+.stale .cellInner {
+  opacity: 0.62;
+}
+
+.cellInner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.resultRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.result {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.result svg {
+  flex: none;
+}
+
+.outletTag {
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+/* 悬停提示 */
+
+.tip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tip .mono {
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+
+.tipHead {
+  font-weight: 600;
+}
+
+.tipMuted {
+  color: var(--ink-2);
+}

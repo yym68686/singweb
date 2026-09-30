@@ -1,0 +1,205 @@
+/* 顶部的一句话状态 */
+
+.hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+  padding-bottom: var(--sp-5);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+/* 像机柜面板上的指示灯 */
+.lamp {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-top: 2px;
+  border-radius: var(--r-btn);
+}
+
+.lamp svg {
+  width: 24px;
+  height: 24px;
+}
+
+.good .lamp {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.warn .lamp {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.crit .lamp {
+  background: var(--crit-soft);
+  color: var(--crit);
+}
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.headline {
+  font-size: clamp(24px, 1.6vw + 14px, 36px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.summary {
+  max-width: 72ch;
+  color: var(--ink-2);
+}
+
+.heroAction {
+  margin-top: var(--sp-2);
+}
+
+@media (max-width: 480px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lamp {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* 主体：窄屏时“需要注意”排在最前面；宽屏时放到右栏 */
+
+.grid {
+  display: grid;
+  grid-template-areas:
+    'attention'
+    'outlets'
+    'events';
+  gap: var(--sp-6);
+  align-items: start;
+}
+
+.attention {
+  grid-area: attention;
+  min-width: 0;
+}
+
+.outlets {
+  grid-area: outlets;
+  min-width: 0;
+}
+
+.events {
+  grid-area: events;
+  min-width: 0;
+}
+
+@media (min-width: 1180px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'outlets attention'
+      'outlets events';
+  }
+
+  .attention:empty {
+    display: none;
+  }
+}
+
+/* 设备面板里的每个分组 */
+
+.routes {
+  display: flex;
+  flex-direction: column;
+}
+
+.route {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+
+.route + .route {
+  border-top: 1px solid var(--line);
+}
+
+.routeHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.group {
+  font-weight: 600;
+}
+
+.lastSwitch {
+  margin-left: auto;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+/* 需要注意 */
+
+.attnList {
+  display: flex;
+  flex-direction: column;
+}
+
+.attnItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) 13px;
+  border-left: 3px solid transparent;
+}
+
+.attnItem + .attnItem {
+  border-top: 1px solid var(--line);
+}
+
+.attnItem svg {
+  margin-top: 2px;
+}
+
+.attnItem.crit {
+  border-left-color: var(--crit);
+}
+
+.attnItem.serious {
+  border-left-color: var(--serious);
+}
+
+.attnItem.warn {
+  border-left-color: var(--warn);
+}
+
+.attnBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.attnTitle {
+  font-weight: 600;
+}
+
+.attnWhere {
+  font-size: var(--fs-13);
+}
+
+.attnText {
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}

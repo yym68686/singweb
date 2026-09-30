@@ -1,0 +1,35 @@
+# 容器里用不上的东西都别进构建上下文。
+#
+# 除了让构建更快，这一层还有安全意义：node_modules 里可能有本机装过的东西，
+# .env 和本地数据目录里是凭据，它们都不该被 COPY 进镜像，更不该进镜像层缓存。
+
+node_modules
+**/node_modules
+
+# 前端构建产物在镜像里现打，不拷本机的
+dist
+
+# 环境变量和本地状态：DATABASE_URL、订阅链接都可能在这里
+.env
+.env.*
+!.env.example
+
+# Agent 的本地接入信息：里面有设备 secret 和 Clash API 密钥
+.singweb
+*.singweb
+
+# 日志和编辑器、系统垃圾
+*.log
+npm-debug.log*
+.DS_Store
+.vscode
+.idea
+.claude
+
+# 版本控制自己的东西
+.git
+.gitignore
+
+# 文档和测试脚本不进镜像
+docs
+README.md

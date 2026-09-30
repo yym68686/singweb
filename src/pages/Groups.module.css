@@ -1,0 +1,72 @@
+.title {
+  font-size: var(--fs-16);
+}
+
+.title a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.title a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.body {
+  display: grid;
+  gap: var(--sp-5);
+  padding: var(--sp-4);
+}
+
+@media (min-width: 1080px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  }
+}
+
+.rules {
+  align-content: start;
+  font-size: var(--fs-14);
+  line-height: 1.55;
+}
+
+.devices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+@media (min-width: 1080px) {
+  .devices {
+    padding-left: var(--sp-5);
+    border-left: 1px solid var(--line);
+  }
+}
+
+.devicesTitle {
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 400;
+}
+
+.deviceList {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.device {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.deviceName {
+  overflow-wrap: anywhere;
+}
+
+.outlet {
+  font-weight: 600;
+}

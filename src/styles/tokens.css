@@ -1,0 +1,142 @@
+/*
+ * 设计变量
+ * 底色取自机柜灰，强调色取自 OM4 光纤跳线的紫红色：
+ * “当前出口”用一根跳线表示，其余颜色只用来表示状态。
+ */
+
+:root {
+  --font-sans: 'Atkinson Hyperlegible Next Variable', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+  /* 只用于原样显示的字符串：主机名、tag、主机密钥、JSON */
+  --font-mono: 'Atkinson Hyperlegible Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-36: 36px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  --r-panel: 4px;
+  --r-btn: 6px;
+  --r-input: 4px;
+  --r-pill: 999px;
+
+  --sidebar-w: 232px;
+  --content-max: 1280px;
+  /* 窄屏顶栏的高度：吸顶元素和锚点跳转要让开它 */
+  --sticky-top: 52px;
+  --control-h: 32px;
+  --control-h-sm: 28px;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur: 160ms;
+}
+
+@media (min-width: 960px) {
+  :root {
+    --sticky-top: 0px;
+  }
+}
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --ground: #e4e8e5;
+  --rack: #d6dcd8;
+  --panel: #f7f8f6;
+  --panel-2: #eef1ee;
+  --field: #ffffff;
+  --field-border: #838d93;
+  --line: #c9d0cb;
+  --line-strong: #aeb7b1;
+
+  --ink: #1e262b;
+  --ink-2: #4a555b;
+  --ink-3: #5e696f;
+
+  --accent: #a3306a;
+  --accent-btn: #a3306a;
+  --accent-btn-hover: #8a2759;
+  --accent-ink: #8e2a5b;
+  --accent-soft: #f3dfe9;
+  --cord: #b8417e;
+  --on-accent: #ffffff;
+  --danger-btn: #c6302f;
+  --danger-btn-hover: #a82826;
+
+  --good: #1c8a2a;
+  --warn: #b07000;
+  --serious: #c4541f;
+  --crit: #c6302f;
+  --offline: #7b858a;
+  --good-soft: #ddefdf;
+  --warn-soft: #f6ead2;
+  --serious-soft: #f7e1d6;
+  --crit-soft: #f6dcdb;
+  --offline-soft: #eef1ee;
+
+  --strip: #7d878d;
+  --strip-grid: #d9dfdb;
+
+  --shadow-float: 0 12px 32px rgb(30 38 43 / 0.18), 0 2px 6px rgb(30 38 43 / 0.12);
+  /* 横向滚动区边上的阴影 */
+  --scroll-shade: rgb(30 38 43 / 0.16);
+  --scrim: rgb(30 38 43 / 0.42);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ground: #111517;
+  --rack: #161b1e;
+  --panel: #1a2023;
+  --panel-2: #20272a;
+  --field: #14191b;
+  --field-border: #5f6a70;
+  --line: #2e363a;
+  --line-strong: #3f494e;
+
+  --ink: #e6ebe8;
+  --ink-2: #aeb8bc;
+  --ink-3: #8a959b;
+
+  --accent: #e26ca3;
+  --accent-btn: #c24583;
+  --accent-btn-hover: #b23a76;
+  --accent-ink: #ee8db9;
+  --accent-soft: #3a2230;
+  --cord: #e26ca3;
+  --on-accent: #ffffff;
+  --danger-btn: #c43a36;
+  --danger-btn-hover: #ad302d;
+
+  --good: #3dbb4a;
+  --warn: #f0ae2e;
+  --serious: #ee8454;
+  --crit: #ef5f5c;
+  --offline: #7e898e;
+  --good-soft: #1d3322;
+  --warn-soft: #3a2f16;
+  --serious-soft: #3b261c;
+  --crit-soft: #3d2121;
+  --offline-soft: #20272a;
+
+  --strip: #7e898e;
+  --strip-grid: #2a3236;
+
+  --shadow-float: 0 12px 32px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.4);
+  --scroll-shade: rgb(0 0 0 / 0.55);
+  --scrim: rgb(0 0 0 / 0.6);
+}

@@ -1,0 +1,263 @@
+/* 外框往外扩 2px，里面再补回来：插孔的边和跳线的圆头不会被裁掉。横向滚动见 ScrollFrame */
+.frame {
+  margin: -2px -2px 0;
+}
+
+.scroller {
+  padding: 2px 2px 0;
+}
+
+.strip {
+  /* 与 RouteStrip.tsx 里的 COL_MIN 一致 */
+  --col-min: 62px;
+  --socket-bg: var(--panel);
+  position: relative;
+  display: grid;
+  /* 第一列是 selector，宽度 --jack 由 RouteStrip.tsx 按名字量出；候选节点平分剩下的宽度 */
+  grid-template-columns: var(--jack) repeat(var(--ports), minmax(0, 1fr));
+  min-width: calc(var(--jack) + var(--ports) * var(--col-min));
+  /* 与 RouteStrip.tsx 里的 SAG 一致 */
+  padding-bottom: 34px;
+}
+
+.col {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* selector 名是配置里的原文，不截断 */
+.jackTag {
+  display: block;
+  width: max-content;
+  max-width: none;
+  overflow: visible;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  color: var(--accent-ink);
+}
+
+.pin {
+  width: 12px;
+  height: 12px;
+  color: var(--ink-2);
+}
+
+.sub {
+  max-width: 100%;
+  overflow: hidden;
+  margin-bottom: 6px;
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 插孔 */
+
+.socket {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--ink-3);
+  border-radius: 50%;
+  background: var(--socket-bg);
+  color: var(--ink-2);
+}
+
+.socket svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.5;
+}
+
+.jack {
+  border-radius: 6px;
+  border-color: var(--ink-2);
+}
+
+.up {
+  border-color: var(--ink-3);
+}
+
+.down {
+  border-color: var(--crit);
+  color: var(--crit);
+}
+
+.unknown {
+  border-style: dashed;
+  border-color: var(--ink-3);
+}
+
+/* 手动选择的分组不探测 */
+.idle {
+  border-style: dotted;
+  border-color: var(--ink-3);
+}
+
+.disabled {
+  border-color: var(--line-strong);
+  color: var(--ink-3);
+}
+
+.direct {
+  border-color: var(--ink-3);
+}
+
+.directCol {
+  border-left: 1px dashed var(--line-strong);
+}
+
+.active {
+  border-color: var(--cord);
+}
+
+.active.down {
+  border-color: var(--crit);
+}
+
+/* 插上跳线的插孔：中间是跳线的插头 */
+.plugged::after {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--cord);
+}
+
+.jack.plugged::after {
+  border-radius: 3px;
+}
+
+/* 跳线 */
+
+.cord {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.cordPath {
+  fill: none;
+  stroke: var(--cord);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: d 520ms var(--ease-out);
+}
+
+.loosePlug {
+  fill: var(--cord);
+}
+
+.broken .cordPath {
+  stroke-dasharray: 6 5;
+}
+
+.stale .cordPath,
+.stale .loosePlug {
+  stroke: var(--offline);
+}
+
+.stale .loosePlug {
+  fill: var(--offline);
+}
+
+.stale .plugged::after {
+  background: var(--offline);
+}
+
+.stale .active {
+  border-color: var(--offline);
+}
+
+.cutNote {
+  position: absolute;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.cutNote svg {
+  width: 14px;
+  height: 14px;
+  color: var(--crit);
+}
+
+/* 提示框 */
+
+.tipTitle {
+  font-weight: 600;
+}
+
+.tipMeta {
+  color: var(--ink-2);
+}
+
+.tipStrong {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* 图例 */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini {
+  --socket-bg: transparent;
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.mini.plugged::after {
+  width: 6px;
+  height: 6px;
+}
+
+.mini svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 3;
+}

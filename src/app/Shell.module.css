@@ -1,0 +1,280 @@
+.shell {
+  min-height: 100dvh;
+}
+
+.skip {
+  position: fixed;
+  left: var(--sp-3);
+  top: var(--sp-3);
+  z-index: 300;
+  padding: 8px 14px;
+  border-radius: var(--r-btn);
+  background: var(--accent-btn);
+  color: var(--on-accent);
+  font-weight: 600;
+  transform: translateY(-200%);
+}
+
+.skip:focus-visible {
+  transform: none;
+}
+
+/* 侧栏：机柜的立柱 */
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  width: var(--sidebar-w);
+  padding: var(--sp-4) var(--sp-3);
+  border-right: 1px solid var(--line);
+  background: var(--rack);
+  overflow-y: auto;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  color: var(--ink);
+  font-size: var(--fs-16);
+  font-weight: 700;
+}
+
+/* 侧栏是纵向排列，不让品牌链接撑满整行 */
+.sidebar .brand {
+  align-self: flex-start;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.mark {
+  width: 24px;
+  height: 24px;
+}
+
+.mark rect {
+  fill: var(--accent-btn);
+}
+
+.mark path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.mark circle {
+  fill: #fff;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--sp-5);
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navGroup {
+  margin: var(--sp-5) 0 var(--sp-1);
+  padding: 0 var(--sp-3);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-btn);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.link:hover {
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.link svg {
+  width: 18px;
+  height: 18px;
+}
+
+.linkText {
+  flex: 1;
+}
+
+/* 当前页：跳线色的竖条，像插在这一格上 */
+.active {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--cord);
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 20px;
+  padding: 0 6px 0 4px;
+  border-radius: 3px;
+  background: var(--crit-soft);
+  color: var(--ink);
+  font-size: var(--fs-12);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.count svg {
+  width: 13px;
+  height: 13px;
+  color: var(--crit);
+}
+
+.sideFoot {
+  margin-top: auto;
+  padding-top: var(--sp-5);
+}
+
+/* 窄屏顶栏 */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 52px;
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--rack);
+}
+
+.topCount {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+.topCount:hover {
+  text-decoration: none;
+}
+
+/* 抽屉 */
+
+.drawer {
+  width: min(300px, calc(100vw - 48px));
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--line-strong);
+  background: var(--rack);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+}
+
+.drawer::backdrop {
+  background: var(--scrim);
+}
+
+.drawer[open] {
+  animation: slide 200ms var(--ease-out);
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+.drawerInner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: var(--sp-3) var(--sp-3) var(--sp-4);
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 主内容 */
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: calc(var(--content-max) + 2 * var(--sp-6));
+  padding: var(--sp-5) var(--sp-4) var(--sp-8);
+}
+
+.main:focus {
+  outline: none;
+}
+
+@media (min-width: 640px) {
+  .main {
+    padding: var(--sp-6) var(--sp-5) var(--sp-8);
+  }
+}
+
+@media (min-width: 960px) {
+  .sidebar {
+    display: flex;
+  }
+
+  .topbar {
+    display: none;
+  }
+
+  .column {
+    margin-left: var(--sidebar-w);
+  }
+
+  .main {
+    padding: var(--sp-6) var(--sp-6) var(--sp-8);
+  }
+}

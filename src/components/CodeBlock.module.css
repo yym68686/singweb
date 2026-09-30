@@ -1,0 +1,58 @@
+.block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--panel-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.pre:focus-visible {
+  outline-offset: -2px;
+}
+
+.failed {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.failed svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--crit);
+}

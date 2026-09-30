@@ -1,0 +1,83 @@
+/* 登录页是独立一屏，没有侧栏，所以自己撑满视口并居中 */
+
+.page {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 100dvh;
+  padding: var(--sp-6) var(--sp-4);
+  background: var(--ground);
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.head {
+  margin-bottom: var(--sp-5);
+}
+
+/* 跟侧栏一个样式：底色调成品牌色，线用纸面色 */
+.mark {
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin-bottom: var(--sp-3);
+}
+
+.mark rect {
+  fill: var(--accent);
+}
+
+.mark path {
+  fill: none;
+  stroke: var(--panel);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.mark circle {
+  fill: var(--panel);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-24);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.submit {
+  /* 表单里按钮要撑满，跟输入框对齐 */
+  justify-content: center;
+  width: 100%;
+  margin-top: var(--sp-1);
+}
+
+.foot {
+  margin: var(--sp-5) 0 0;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--fs-12);
+  line-height: 1.6;
+}

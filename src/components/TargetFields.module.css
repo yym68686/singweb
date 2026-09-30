@@ -1,0 +1,45 @@
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* 主机和端口并排 */
+.address {
+  display: grid;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+/* 状态码和关键字并排 */
+.expect {
+  display: grid;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+@media (min-width: 560px) {
+  .address {
+    grid-template-columns: minmax(0, 1fr) 128px;
+  }
+
+  .expect {
+    grid-template-columns: 176px minmax(0, 1fr);
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 两个步骤是递进关系，竖着排 */
+.levels {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.hostKey {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}

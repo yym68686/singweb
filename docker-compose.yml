@@ -1,0 +1,55 @@
+# 本地和自托管用的编排。一个管理服务，一个 PostgreSQL。
+#
+# 云上 fugue 部署时不需要这个文件里的 postgres 服务——`fugue deploy --managed-postgres`
+# 会另外给一个托管的库，连接串以 DATABASE_URL 注入。这个文件主要给
+# `docker compose up` 一条命令把整套跑起来用。
+
+name: singweb
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: singweb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-singweb}
+      POSTGRES_DB: singweb
+      # 初始化的排序规则固定下来，免得换机器时索引行为不一致
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    volumes:
+      # 库的数据在卷里，容器重建不丢。
+      # postgres 18 起数据按主版本号放在子目录里，挂载点必须是 /var/lib/postgresql
+      # 而不是过去的 /var/lib/postgresql/data——挂在旧路径上镜像会认为
+      # 有个不认识的库，直接拒绝启动。
+      # 这样之后大版本升级也能用 pg_upgrade --link，不受挂载点边界影响
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      # 管理服务要等库真的能接受连接，光等容器起来没用
+      test: ['CMD-SHELL', 'pg_isready -U singweb -d singweb']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    # 默认不把库暴露到主机上。要在宿主机用 psql 连，把注释去掉
+    # ports:
+    #   - '5432:5432'
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      HOST: 0.0.0.0
+      # 表结构由服务端启动时自动建，这里只给连接串。
+      # 指向别的库（比如托管 PostgreSQL）时把这一项换掉即可
+      DATABASE_URL: postgres://singweb:${POSTGRES_PASSWORD:-singweb}@db:5432/singweb
+    ports:
+      - '${SINGWEB_PORT:-8080}:8080'
+
+volumes:
+  db-data:

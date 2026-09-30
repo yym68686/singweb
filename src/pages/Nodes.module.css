@@ -1,0 +1,71 @@
+.tag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+/* 健康列：按结论分堆列出设备 */
+.buckets {
+  display: grid;
+  gap: 4px;
+}
+
+.buckets li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.buckets li > svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.bucketLabel {
+  font-weight: 600;
+}
+
+.outlets {
+  display: grid;
+  gap: 4px;
+}
+
+.outlets li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+}
+
+.group {
+  color: var(--ink-2);
+}
+
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+}
+
+.flag svg {
+  width: 13px;
+  height: 13px;
+}
+
+.impacts {
+  display: grid;
+  gap: 6px;
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-input);
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.where {
+  font-weight: 600;
+  margin-right: 0.5em;
+}

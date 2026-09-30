@@ -1,0 +1,28 @@
+.toolbar > button {
+  min-width: 0;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* 换了筛选条件、新结果还没到：旧结果稍微变淡 */
+.busy {
+  opacity: 0.6;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+}
+
+.moreError {
+  font-size: var(--fs-13);
+  font-weight: 600;
+}

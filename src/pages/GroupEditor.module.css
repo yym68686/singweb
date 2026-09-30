@@ -1,0 +1,388 @@
+/* 表单在左，配置预览在右；窄屏时预览落到下面 */
+.layout {
+  display: grid;
+  /* 同 page.split：不让内容撑宽窄屏上的单列 */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-6);
+  align-items: start;
+}
+
+@media (min-width: 1180px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  }
+
+  .aside {
+    position: sticky;
+    top: var(--sp-5);
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-4);
+}
+
+@media (min-width: 640px) {
+  .body {
+    padding: var(--sp-5);
+  }
+}
+
+.row2 {
+  display: grid;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+@media (min-width: 720px) {
+  .row2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-2);
+}
+
+.stackCards {
+  display: grid;
+  gap: var(--sp-2);
+  max-width: 640px;
+}
+
+/* 卡片右上角的状态：图标 + 文字 */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.status svg {
+  width: 14px;
+  height: 14px;
+}
+
+.warnIcon {
+  color: var(--warn);
+}
+
+/* 端口输入框和上面复选框的文字对齐（16px 方框 + 10px 间距） */
+.indent {
+  padding-left: 26px;
+}
+
+.short {
+  max-width: 240px;
+}
+
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.timing {
+  max-width: 72ch;
+  padding: 10px 12px;
+  border-radius: var(--r-input);
+  background: var(--panel-2);
+  font-size: var(--fs-13);
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 72ch;
+}
+
+/* 候选节点排序 */
+
+.order {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-panel);
+  background: var(--field);
+}
+
+.orderItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  min-height: 48px;
+  padding: 6px 6px 6px 12px;
+}
+
+.orderItem + .orderItem {
+  border-top: 1px solid var(--line);
+}
+
+.rank {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 第一位是正在优先使用的节点 */
+.orderItem:first-child .rank {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.orderName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--sp-2);
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.orderTag {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.orderActions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.orderEmpty {
+  padding: var(--sp-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-panel);
+  color: var(--ink-2);
+}
+
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.addRow > :first-child {
+  flex: 0 1 360px;
+  min-width: 0;
+}
+
+/* 保存栏：跟着页面滚动停在窗口底部 */
+
+.footer {
+  position: sticky;
+  bottom: var(--sp-3);
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-panel);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.footerStatus {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+/* 两个按钮一起换行，不拆到两行 */
+.footerActions {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.footerError {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.footerError svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--crit);
+}
+
+.danger {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.danger p {
+  flex: 1 1 320px;
+  max-width: 64ch;
+  color: var(--ink-2);
+}
+
+/* 配置预览 */
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.previewTitle {
+  font-size: var(--fs-16);
+}
+
+.code pre {
+  max-height: clamp(240px, calc(100dvh - 300px), 560px);
+}
+
+.previewEmpty {
+  padding: var(--sp-5) var(--sp-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-panel);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+/* 接管条件、筛选条件：每一类一个小标题，标题后接一条细线 */
+.categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: var(--sp-2);
+}
+
+.category {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.categoryTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.categoryTitle::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.checkGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--sp-2) var(--sp-4);
+}
+
+/* 接管条件的实时摘要 */
+.summary {
+  max-width: 72ch;
+  padding: 10px 12px;
+  border-radius: var(--r-input);
+  background: var(--panel-2);
+  font-size: var(--fs-13);
+}
+
+.modes {
+  align-self: flex-start;
+}
+
+/* 按条件加入：现在符合条件的节点 */
+.matched {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-5);
+}
+
+.matchedTitle {
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+
+/* 分组规则列表 */
+.ruleIcon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-2);
+}
+
+.ruleIcon.warnIcon {
+  color: var(--warn);
+}
+
+.ruleText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ruleName {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* 添加规则对话框 */
+.pickList {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.dialogForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.formError {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.formError svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--crit);
+}

@@ -1,0 +1,79 @@
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-2) var(--sp-3);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--r-panel);
+  background: var(--panel);
+}
+
+.icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* 手机上（320px 宽也一样）图标和文字在同一行；有操作按钮时，放不下再换到下一行 */
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.text {
+  color: var(--ink);
+}
+
+.text p + p {
+  margin-top: var(--sp-1);
+}
+
+.action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-self: center;
+}
+
+.info {
+  border-left-color: var(--ink-3);
+}
+.info .icon {
+  color: var(--ink-2);
+}
+
+.warn {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+.warn .icon {
+  color: var(--warn);
+}
+
+.crit {
+  border-color: color-mix(in srgb, var(--crit) 40%, var(--line));
+  border-left-color: var(--crit);
+  background: var(--crit-soft);
+}
+.crit .icon {
+  color: var(--crit);
+}
+
+.offline {
+  border-left-color: var(--offline);
+  background: var(--offline-soft);
+}
+.offline .icon {
+  color: var(--offline);
+}

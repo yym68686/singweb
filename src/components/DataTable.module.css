@@ -1,0 +1,79 @@
+/* 各页面共用的表格样式 */
+
+/* 不在面板里的表格：外框自己画边框。横向滚动见 ScrollFrame */
+.wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--panel);
+}
+
+.table {
+  width: 100%;
+  min-width: var(--table-min, 0);
+}
+
+.table th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.table td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.table tbody tr:first-child td {
+  border-top: 0;
+}
+
+.middle td {
+  vertical-align: middle;
+}
+
+.name {
+  font-weight: 600;
+}
+
+.sub {
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+.num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.actions {
+  width: 1%;
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.actions > * + * {
+  margin-left: 4px;
+}
+
+/* 行内的逗号分隔列表 */
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+.dim {
+  color: var(--ink-3);
+}

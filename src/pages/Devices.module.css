@@ -1,0 +1,43 @@
+.outlets {
+  display: grid;
+  grid-template-columns: max-content max-content max-content;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.outlet {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.group {
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+.node {
+  font-weight: 600;
+}
+
+.versions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+
+.old {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.old svg {
+  width: 14px;
+  height: 14px;
+  color: var(--warn);
+}

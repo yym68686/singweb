@@ -1,0 +1,69 @@
+/* 类型列：图标加文字 */
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.kind svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--ink-2);
+}
+
+/* 网址可能很长，允许在任意位置折行 */
+.addr {
+  max-width: 280px;
+  overflow-wrap: anywhere;
+}
+
+/* 表格里“核对主机密钥”前的小盾牌 */
+.key {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.key svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.recent {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.recent > svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+/* 添加 / 编辑对话框 */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.formError {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.formError svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--crit);
+}

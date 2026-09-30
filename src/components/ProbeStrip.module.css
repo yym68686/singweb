@@ -1,0 +1,34 @@
+.strip {
+  display: block;
+  overflow: visible;
+  cursor: default;
+  touch-action: pan-y;
+}
+
+.base {
+  stroke: var(--strip-grid);
+  stroke-width: 1;
+}
+
+.pass {
+  fill: var(--strip);
+}
+
+.fail {
+  fill: var(--crit);
+}
+
+.hot {
+  fill: var(--ink);
+}
+
+.fail.hot {
+  fill: var(--crit);
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.tipTime {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

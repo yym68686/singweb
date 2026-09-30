@@ -1,0 +1,23 @@
+.trigger {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.focusable {
+  border-radius: 2px;
+}
+
+.tip {
+  position: fixed;
+  z-index: 100;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-panel);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+  pointer-events: none;
+}

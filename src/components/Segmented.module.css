@@ -1,0 +1,68 @@
+.group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* 与表单字段的标签一致 */
+.legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-weight: 600;
+}
+
+.segs {
+  display: grid;
+  padding: 2px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-btn);
+  background: var(--panel-2);
+}
+
+.seg {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: calc(var(--control-h) - 6px);
+  padding: 0 12px;
+  border-radius: 4px;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seg svg {
+  width: 15px;
+  height: 15px;
+}
+
+.seg:hover {
+  color: var(--ink);
+}
+
+.radio {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.seg:has(.radio:checked) {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.seg:has(.radio:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

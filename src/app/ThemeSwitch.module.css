@@ -1,0 +1,69 @@
+.group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  margin-bottom: 6px;
+  padding: 0 var(--sp-1);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.segs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-btn);
+  background: var(--panel-2);
+}
+
+.seg {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 28px;
+  border-radius: 4px;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.seg svg {
+  width: 14px;
+  height: 14px;
+}
+
+.seg:hover {
+  color: var(--ink);
+}
+
+.radio {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.seg:has(.radio:checked) {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.seg:has(.radio:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -1,0 +1,78 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  align-self: flex-start;
+  min-height: 24px;
+  margin-left: -4px;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.back svg {
+  width: 16px;
+  height: 16px;
+}
+
+.back:hover {
+  color: var(--ink);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-5);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  flex: 1 1 360px;
+}
+
+.title {
+  font-size: var(--fs-24);
+  line-height: 1.25;
+}
+
+.desc {
+  max-width: 72ch;
+  color: var(--ink-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+
+.sectionTitle {
+  font-size: var(--fs-16);
+}
+
+.sectionDesc {
+  max-width: 72ch;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}

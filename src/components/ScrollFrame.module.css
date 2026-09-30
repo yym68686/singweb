@@ -1,0 +1,53 @@
+/* 横向滚动区。阴影画在外框上：不跟着内容滚动，也不会被表头、高亮行的背景盖住 */
+
+.frame {
+  position: relative;
+  /* 里面的 z-index 只在这个框里比较 */
+  isolation: isolate;
+  /* 圆角外的内容和阴影都裁掉；clip 不会像 hidden 那样变成滚动容器 */
+  overflow: clip;
+}
+
+.scroller {
+  /* 滚动容器也要设 position，里面绝对定位的元素（比如只给读屏软件的文字）
+     才会跟着一起裁剪，不会把整个页面撑宽 */
+  position: relative;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* 焦点框画在里面，不会被外框裁掉 */
+.scroller:focus-visible {
+  outline-offset: -2px;
+}
+
+.frame::before,
+.frame::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+/* 左边还有内容。第一列固定在左边的表格可以设 --shade-start: none 关掉它，改画在固定列的右边 */
+.frame::before {
+  display: var(--shade-start, block);
+  left: 0;
+  background: linear-gradient(to right, var(--scroll-shade), transparent);
+}
+
+/* 右边还有内容 */
+.frame::after {
+  right: 0;
+  background: linear-gradient(to left, var(--scroll-shade), transparent);
+}
+
+.frame[data-more-start]::before,
+.frame[data-more-end]::after {
+  opacity: 1;
+}

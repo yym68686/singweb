@@ -1,0 +1,77 @@
+.dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  overflow: auto;
+}
+
+.wide {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.dialog::backdrop {
+  background: var(--scrim);
+}
+
+.dialog[open] {
+  animation: rise var(--dur) var(--ease-out);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-2) var(--sp-5);
+}
+
+.title {
+  font-size: var(--fs-16);
+}
+
+.description {
+  padding: 0 var(--sp-5) var(--sp-4);
+  color: var(--ink-2);
+}
+
+.description p + p {
+  margin-top: var(--sp-2);
+}
+
+.body {
+  padding: 0 var(--sp-5) var(--sp-5);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.error {
+  flex: 1 1 100%;
+  color: var(--crit);
+  font-weight: 600;
+}

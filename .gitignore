@@ -1,0 +1,9 @@
+node_modules
+dist
+.env.local
+.env
+*.log
+.DS_Store
+
+# Claude Code 的本地配置：预览服务器的启动方式，属于个人环境，不进仓库
+.claude

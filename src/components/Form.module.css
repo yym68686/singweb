@@ -1,0 +1,278 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.label {
+  padding: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hint {
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--crit);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.error svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 5px 10px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-input);
+  background: var(--field);
+  color: var(--ink);
+  line-height: 1.4;
+  transition: border-color var(--dur) var(--ease-out);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--ink-2);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--crit);
+}
+
+.input:disabled {
+  opacity: 0.6;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-13);
+}
+
+.textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.unitWrap {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  max-width: 180px;
+}
+
+.unitInput {
+  padding-right: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.selectWrap {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+}
+
+.select {
+  appearance: none;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+.chevron {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+/* 复选框、单选 */
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.checkInput {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+
+.checkText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.checkLabel {
+  font-weight: 600;
+}
+
+.checkDesc {
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+}
+
+.checkAside {
+  margin-left: auto;
+  padding-left: var(--sp-3);
+  flex: none;
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+}
+
+.card {
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-panel);
+  background: var(--field);
+  transition:
+    border-color var(--dur) var(--ease-out),
+    background-color var(--dur) var(--ease-out);
+}
+
+.card:hover {
+  border-color: var(--field-border);
+}
+
+.card:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.card:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card .checkInput:focus-visible {
+  outline: none;
+}
+
+.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 开关 */
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  transition: background-color var(--dur) var(--ease-out);
+}
+
+/* 开关只有 20px 高，把点击区域向外扩到 44px 见方，手机上好点 */
+.switch::after {
+  content: '';
+  position: absolute;
+  inset: -13px -5px;
+}
+
+.thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.on {
+  border-color: var(--accent-btn);
+  background: var(--accent-btn);
+}
+
+.on .thumb {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+.switch:disabled,
+.switch[aria-disabled='true'] {
+  opacity: 0.55;
+}
+
+.switch[aria-busy='true'] {
+  cursor: progress;
+}
+
+/* 表单错误摘要 */
+
+.formError {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--crit);
+  border-radius: var(--r-panel);
+  background: var(--crit-soft);
+  color: var(--ink);
+}
+
+.formError svg {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: var(--crit);
+}
