@@ -232,9 +232,13 @@ export class HttpApiClient implements ApiClient {
     return (await this.request<{ token: string }>('POST', '/subscription/reset')).token
   }
 
-  /** 生成一条设备接入命令用的令牌 */
+  /**
+   * 生成一条设备接入命令用的令牌。带上接口所在的站点——设备页的命令也是拿它拼的——
+   * 安装脚本照着它连回管理服务。服务端在终止 TLS 的代理后面看不出自己是不是 https
+   */
   createEnroll() {
-    return this.request<{ id: string; token: string; expiresAt: string }>('POST', '/devices/enroll')
+    const base = new URL(this.base, window.location.origin).origin
+    return this.request<{ id: string; token: string; expiresAt: string }>('POST', '/devices/enroll', { base })
   }
   /** 设备页轮询这条命令用掉了没有 */
   getEnroll(id: string) {

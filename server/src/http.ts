@@ -219,8 +219,17 @@ export function clientIp(req: IncomingMessage): string {
   return req.socket.remoteAddress ?? ''
 }
 
-/** 走没走 HTTPS。决定 Cookie 要不要加 Secure */
+/**
+ * 走没走 HTTPS。决定 Cookie 要不要加 Secure。
+ *
+ * 先看浏览器带的 Origin：有的平台在边缘终止 TLS，转进来时把 x-forwarded-proto
+ * 一律写成 http，只看转发头会把 https 站点当成 http，Cookie 就少了 Secure。
+ * 登录、退出、改密码都是 POST，浏览器一定会带 Origin。被伪造了也无妨，
+ * 最坏是给伪造者自己的 Cookie 多加或少加一个 Secure
+ */
 export function isSecure(req: IncomingMessage): boolean {
+  const origin = req.headers.origin
+  if (typeof origin === 'string' && origin.startsWith('https://')) return true
   const proto = req.headers['x-forwarded-proto']
   if (typeof proto === 'string' && proto) return proto.split(',')[0].trim() === 'https'
   return Boolean((req.socket as { encrypted?: boolean }).encrypted)

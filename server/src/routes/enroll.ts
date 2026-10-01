@@ -8,14 +8,32 @@
  * 状态查询是给设备页轮询用的：命令跑起来之后，页面靠它把「等待接入」变成「已接入」。
  */
 
-import { notFound, sendJson, type Router } from '../http.ts'
+import { badRequest, notFound, readBody, sendJson, type Router } from '../http.ts'
 import { toDevice } from '../model.ts'
 import * as store from '../store.ts'
+import { isScriptBase } from './install.ts'
+
+/**
+ * 网页报上来的自己所在的站点，安装脚本照着它连回管理服务。
+ * 网页知道用户是从哪个地址打开的，服务端在 TLS 终止的代理后面只看得到 http。
+ * 不带也行（直接调接口时），那样安装脚本按请求本身推算
+ */
+function enrollBase(body: unknown): string | null {
+  if (body === undefined) return null
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw badRequest('请求内容要是一个对象。')
+  const raw = (body as Record<string, unknown>).base
+  if (raw === undefined || raw === null || raw === '') return null
+  if (typeof raw !== 'string' || !isScriptBase(raw)) {
+    throw badRequest('管理服务地址只能是 http(s)://主机[:端口]，不带路径。', 'base')
+  }
+  return raw
+}
 
 export function registerEnrollRoutes(router: Router): void {
   /** 生成一个接入令牌。要登录，而且只有管理员能生成 */
   router.adminPost('/devices/enroll', async (ctx) => {
-    const created = await store.createEnrollToken(ctx.user?.id ?? null)
+    const base = enrollBase(await readBody(ctx.req))
+    const created = await store.createEnrollToken(ctx.user?.id ?? null, base)
     sendJson(ctx.res, 201, {
       id: created.id,
       token: created.token,

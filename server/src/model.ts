@@ -165,6 +165,7 @@ export interface EnrollTokenRow {
   expires_at: Date
   used_at: Date | null
   device_id: string | null
+  base: string | null
 }
 
 /** targets 表。spec 是按 kind 拆开的字段 */

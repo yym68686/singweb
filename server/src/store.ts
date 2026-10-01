@@ -1122,9 +1122,13 @@ export async function ensureSetting(key: string, value: string): Promise<boolean
 /** 接入命令里那个令牌的有效期，够用户复制粘贴到另一台机器上跑 */
 const ENROLL_TTL_MS = 30 * 60 * 1000
 
-/** 生成一个设备接入令牌。库里只留散列，原文发给网页一次，之后再也读不出来 */
+/**
+ * 生成一个设备接入令牌。库里只留散列，原文发给网页一次，之后再也读不出来。
+ * base 是网页所在的站点，安装脚本照着它连回来；不知道时传 null
+ */
 export async function createEnrollToken(
   userId: string | null,
+  base: string | null,
   ttlMs = ENROLL_TTL_MS,
 ): Promise<{ id: string; token: string; expiresAt: Date }> {
   const id = newId('enr')
@@ -1135,8 +1139,8 @@ export async function createEnrollToken(
     // 设备页可能还开在后台，回到前台时要能查到「已接入」，而不是「已失效」
     await client.query("delete from enroll_tokens where expires_at <= now() - interval '1 day'")
     await client.query(
-      'insert into enroll_tokens (id, token_hash, created_by, expires_at) values ($1, $2, $3, $4)',
-      [id, tokenHash(token), userId, expiresAt],
+      'insert into enroll_tokens (id, token_hash, created_by, expires_at, base) values ($1, $2, $3, $4, $5)',
+      [id, tokenHash(token), userId, expiresAt, base],
     )
   })
   return { id, token, expiresAt }
@@ -1156,13 +1160,15 @@ export async function consumeEnrollToken(token: string, deviceId: string): Promi
   )
 }
 
-/** 令牌现在还能不能用来接入。只看不用，安装脚本据此提前报错，省得白下一遍 Node 和 sing-box */
-export async function enrollTokenUsable(token: string): Promise<boolean> {
-  const row = await one<{ id: string }>(
-    'select id from enroll_tokens where token_hash = $1 and used_at is null and expires_at > now()',
+/**
+ * 还能用来接入的令牌，用不了时是 null。只看不用，安装脚本据此提前报错，
+ * 省得白下一遍 Node 和 sing-box
+ */
+export async function usableEnrollToken(token: string): Promise<EnrollTokenRow | null> {
+  return one<EnrollTokenRow>(
+    'select * from enroll_tokens where token_hash = $1 and used_at is null and expires_at > now()',
     [tokenHash(token)],
   )
-  return row !== null
 }
 
 export async function findEnrollToken(id: string): Promise<EnrollTokenRow | null> {

@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import type { IncomingMessage } from 'node:http'
 import { MIN_SINGBOX } from '../../../shared/singbox.ts'
 import { badRequest, sendJson, type Router } from '../http.ts'
+import type { EnrollTokenRow } from '../model.ts'
 import * as store from '../store.ts'
 import { makeTarGz, type TarEntry } from '../tarball.ts'
 
@@ -66,6 +67,14 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/
 /** 服务端地址同理：只认 http(s)://主机[:端口]，主机可以是域名、IPv4 或方括号里的 IPv6 */
 const BASE_RE = /^https?:\/\/(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:\d{1,5})?$/
 
+/**
+ * 能不能原样写进安装脚本当管理服务地址。引号、$、反引号、反斜杠、空格都过不了，
+ * 所以拼进 sh 和 PowerShell 都安全。生成令牌的接口用它检查网页报上来的地址
+ */
+export function isScriptBase(value: string): boolean {
+  return BASE_RE.test(value)
+}
+
 /** 把源码读进来打成包 */
 async function buildAgentTarball(): Promise<Buffer> {
   const entries: TarEntry[] = []
@@ -98,8 +107,19 @@ async function listFiles(dir: string): Promise<string[]> {
 }
 
 /**
- * 服务端自己的地址。反向代理后面要用 x-forwarded-*，
+ * 脚本里写的管理服务地址。优先用生成令牌时网页所在的站点：用户复制的命令就是那个地址，
+ * 设备连得上它。没记的（老令牌、直接调接口生成的）才按请求本身推算。
+ * 读出来再查一遍格式，库里的值同样要能安全地拼进脚本
+ */
+function scriptBase(row: EnrollTokenRow, req: IncomingMessage): string {
+  return row.base && BASE_RE.test(row.base) ? row.base : selfBase(req)
+}
+
+/**
+ * 按请求本身推算服务端的地址。反向代理后面要用 x-forwarded-*，
  * 否则命令里会写成容器内部的 0.0.0.0:8080，用户拿到手跑不通。
+ * 在边缘终止 TLS 的平台上，转进来的请求可能一律标成 http，这里推出来的协议就不准，
+ * 所以只在令牌没记地址时用
  */
 function selfBase(req: IncomingMessage): string {
   const proto = header(req, 'x-forwarded-proto')?.split(',')[0]?.trim() || (isTls(req) ? 'https' : 'http')
@@ -526,13 +546,13 @@ function windowsScript(base: string, token: string): string {
 }
 
 /**
- * 查询串里的令牌能不能用。格式不对的（复制时截断了之类）也当作用不了，
- * 一样下发只报错的脚本；格式检查同时保证令牌原样拼进脚本是安全的。
+ * 查询串里的令牌，以及它在库里那一行；用不了时行是 null。格式不对的（复制时截断了之类）
+ * 也当作用不了，一样下发只报错的脚本；格式检查同时保证令牌原样拼进脚本是安全的。
  */
-async function tokenOf(url: URL): Promise<{ token: string; usable: boolean }> {
+async function tokenOf(url: URL): Promise<{ token: string; row: EnrollTokenRow | null }> {
   const token = url.searchParams.get('token') ?? ''
-  if (!TOKEN_RE.test(token)) return { token: '', usable: false }
-  return { token, usable: await store.enrollTokenUsable(token) }
+  if (!TOKEN_RE.test(token)) return { token: '', row: null }
+  return { token, row: await store.usableEnrollToken(token) }
 }
 
 export function registerInstallRoutes(router: Router): void {
@@ -543,8 +563,8 @@ export function registerInstallRoutes(router: Router): void {
   router.get(
     '/install/macos.sh',
     async (ctx) => {
-      const { token, usable } = await tokenOf(ctx.url)
-      const body = usable ? macosScript(selfBase(ctx.req), token) : staleShell()
+      const { token, row } = await tokenOf(ctx.url)
+      const body = row ? macosScript(scriptBase(row, ctx.req), token) : staleShell()
       sendFile(ctx.res, 'text/x-shellscript; charset=utf-8', body)
     },
     'open',
@@ -553,8 +573,8 @@ export function registerInstallRoutes(router: Router): void {
   router.get(
     '/install/windows.ps1',
     async (ctx) => {
-      const { token, usable } = await tokenOf(ctx.url)
-      const body = usable ? windowsScript(selfBase(ctx.req), token) : stalePowershell()
+      const { token, row } = await tokenOf(ctx.url)
+      const body = row ? windowsScript(scriptBase(row, ctx.req), token) : stalePowershell()
       sendFile(ctx.res, 'text/plain; charset=utf-8', body)
     },
     'open',

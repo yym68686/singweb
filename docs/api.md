@@ -28,6 +28,8 @@
 | --- | --- | --- | --- |
 | GET | `/devices` | | `Device[]` |
 | GET | `/devices/{id}` | | `Device` |
+| POST | `/devices/enroll` | `{ "base"?: string }` | `{ "id": string, "token": string, "expiresAt": string }` |
+| GET | `/devices/enroll/{id}` | | `EnrollStatus` |
 | POST | `/devices/{id}/probe` | | `204` |
 | POST | `/config/preview` | `{ "deviceId": string, "group"?: GroupInput & { "id"?: string } }` | `ConfigPreview` |
 | POST | `/devices/{deviceId}/groups/{groupId}/pending/{id}/retry` | | `{ "ok": true }` |
@@ -77,6 +79,25 @@
 
 - `GET /runtime` 仍返回它最后上报的状态，`state` 为 `stale`。
 - 立即探测、固定节点和选择节点返回 `409`。
+
+### 接入新设备
+
+`POST /devices/enroll` 生成一个一次性的接入令牌，只有管理员能调用。令牌半小时内有效，用过一次就作废，库里只存散列，原文只在这个响应里出现一次。设备页把它拼进安装命令：
+
+```sh
+curl -fsSL "{站点}/api/v1/install/macos.sh?token={token}" | sh
+irm "{站点}/api/v1/install/windows.ps1?token={token}" | iex
+```
+
+请求体里的 `base` 是接口所在的站点，比如 `https://singweb.example.com`，只能是 `http(s)://主机[:端口]`，不带路径，格式不对返回 `400`。安装脚本把它写成管理服务的地址，Agent 照着它接入和上报。前端用和安装命令相同的接口前缀算出它，所以两者总是一致。
+
+不带 `base` 时，安装脚本按下载脚本的那个请求推算地址：先看 `X-Forwarded-Proto`、`X-Forwarded-Host`，再看 `Host`。有的平台在边缘终止 TLS，转进来的请求一律标成 http，推出来的就是 `http://`。Agent 照着这个地址发请求时会被重定向到 https，跨源重定向会丢掉 `Authorization` 头，接入就失败了。所以前端总是带上 `base`。
+
+`GET /devices/enroll/{id}` 查令牌用掉没有，设备页每两秒问一次：
+
+- 还没用：`{ "state": "pending", "expiresAt": string }`
+- 已接入：`{ "state": "joined", "deviceId": string, "device": Device | null }`
+- 过期了、或者已经被清理：`404`
 
 ### 立即探测
 

@@ -118,10 +118,18 @@ DATABASE_URL=postgres://用户:密码@主机:5432/singweb PORT=8080 node server/
 
 ### 接入设备
 
-在设备页生成注册令牌，然后在目标设备上跑 Agent（需要 Node.js 24 和 sing-box）：
+管理员在设备页点「接入新设备」，把 macOS 或 Windows 的那一行命令复制到设备上运行。脚本会：
+
+- 找够新的 Node.js 和 sing-box，没有就下载到 `~/.singweb`；
+- 下载 Agent，用命令里的一次性令牌接入；
+- 设成登录后自动运行。
+
+全程不需要管理员权限。运行前设 `SINGWEB_NO_SERVICE=1`，就不设自动运行，只在当前终端前台跑。
+
+也可以手动接入，需要 Node.js 24 和 sing-box：
 
 ```bash
-node agent/src/bin.ts register --server https://你的域名 --token <注册令牌>
+node agent/src/bin.ts join --server https://你的域名 --token <注册令牌>
 node agent/src/bin.ts run
 ```
 

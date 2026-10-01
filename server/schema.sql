@@ -255,6 +255,12 @@ create table if not exists enroll_tokens (
   device_id  text
 );
 
+-- 生成令牌时网页所在的站点，安装脚本照着它连回管理服务。光看请求本身推不准：
+-- 有的平台在边缘终止 TLS，转进来的请求一律是 http，脚本里就会写成 http，
+-- Agent 跟着重定向去 https 时 Authorization 头会被丢掉。空表示没记，按请求本身推算
+alter table enroll_tokens
+  add column if not exists base text;
+
 -- ---------------------------------------------------------------- 清理
 
 -- 早期版本的 Agent 会把本机 sing-box 配置里的节点报上来，记成「本机配置」。

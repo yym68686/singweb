@@ -135,9 +135,16 @@ export class ApiClient {
       headers,
       body: payload === undefined ? undefined : JSON.stringify(payload),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      // 不跟重定向：跨源的重定向（包括 http 换成 https）会把 Authorization 头丢掉，
+      // 服务端只会回一句「没带令牌」，看不出真正的原因；而且每次都先把凭据明文发一遍
+      redirect: 'manual',
     }).catch((err: unknown) => {
       throw new Error(`连不上 ${this.base}：${err instanceof Error ? err.message : String(err)}`)
     })
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(redirectMessage(this.server, response.headers.get('location')))
+    }
 
     const text = await response.text()
     if (!response.ok) {
@@ -194,6 +201,21 @@ function messageFrom(text: string, status: number): string {
     // 不是 JSON，走下面的兜底
   }
   return `服务端返回 ${status}`
+}
+
+/**
+ * 管理服务把请求转去了别处。最常见的是地址写成了 http、服务端只认 https，
+ * 这时直接告诉用户该换成哪个地址
+ */
+function redirectMessage(server: string, location: string | null): string {
+  let target: URL | null = null
+  try {
+    target = location ? new URL(location, server) : null
+  } catch {
+    target = null
+  }
+  if (!target) return `管理服务 ${server} 返回了重定向，但没说转去哪里。请检查 --server 地址。`
+  return `管理服务 ${server} 把请求转到了 ${target.origin}。请把 --server 改成 ${target.origin} 再试。`
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
