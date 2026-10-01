@@ -6,9 +6,12 @@
  * 列表去空白去重复，只填一个 IP 时补上 /32 或 /128。写进库的就是规范化之后的值。
  */
 
+import { isCatchAll, sharesDevice } from '../../shared/groups.ts'
+import { RESERVED_SELECTOR_TAGS } from '../../shared/singbox.ts'
 import type {
   AllFailAction,
   Candidates,
+  Group,
   NodeFilter,
   NodeProtocol,
   Selection,
@@ -256,8 +259,7 @@ function isIp(addr: string, v4: boolean): boolean {
 
 /** 接管的流量。至少要设一类，返回规范化之后的值 */
 export function checkMatch(value: unknown): TrafficMatch {
-  const field = 'match'
-  if (!value || typeof value !== 'object') fail(field, '请至少设置一类接管条件。')
+  if (!value || typeof value !== 'object') fail('match', '接管条件的格式不对。')
   const raw = value as Record<string, unknown>
 
   const domains = asStringList(raw.domains, 'domains').map((d) => {
@@ -293,12 +295,7 @@ export function checkMatch(value: unknown): TrafficMatch {
     return p
   })
 
-  const byDestination = domains.length + domainKeywords.length + ipCidrs.length + ruleSets.length
-  const byProtocol = protocols.length + ports.length
-  if (!byDestination && !byProtocol && !processNames.length) {
-    fail(field, '请至少设置一类接管条件：目标地址、协议或端口、进程名，三者至少填一类。')
-  }
-
+  // 一类条件都不设，就是兜底分组：别的分组没接管的流量都归它
   return { domains, domainKeywords, ipCidrs, ruleSets, protocols, ports, processNames }
 }
 
@@ -375,9 +372,12 @@ export function checkGroup(
     fail('selectorTag', 'selector tag 只能包含字母、数字、- 和 _。')
   }
   if (selectorTag.length > 60) fail('selectorTag', 'selector tag 最多 60 个字符。')
+  if (RESERVED_SELECTOR_TAGS.includes(selectorTag)) {
+    fail('selectorTag', `「${selectorTag}」在生成的 sing-box 配置里另有用处，换一个名字。`)
+  }
 
+  // 一台都不选表示用在所有设备上，包括以后接入的
   const deviceIds = asStringList(raw.deviceIds, 'deviceIds')
-  if (!deviceIds.length) fail('deviceIds', '至少要选一台设备。')
 
   const match = checkMatch(raw.match ?? EMPTY_MATCH)
 
@@ -439,4 +439,19 @@ export function checkGroup(
         : asBool(raw.interruptExisting, 'interruptExisting'),
     onAllFail: allFailText as AllFailAction,
   }
+}
+
+/**
+ * 兜底分组在同一台设备上只能有一个：sing-box 的 route.final 只有一个出口，
+ * 两个兜底分组同时用在一台设备上，后一个永远接不到流量。
+ */
+export function checkCatchAll(shape: GroupShape, others: Group[]): void {
+  if (!isCatchAll(shape.match)) return
+  const clash = others.find((g) => isCatchAll(g.match) && sharesDevice(g, shape))
+  if (!clash) return
+  const where = shape.deviceIds.length && clash.deviceIds.length ? '同一台设备上' : '所有设备上'
+  fail(
+    'match',
+    `「${clash.name}」已经是${where}的兜底分组了。给这个分组设一类接管条件，或者把它用在别的设备上。`,
+  )
 }

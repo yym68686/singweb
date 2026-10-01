@@ -6,44 +6,67 @@
  */
 
 import { timingSafeEqual } from 'node:crypto'
-import { tokenHash } from '../auth.ts'
 import type { AgentIdentity, Router } from '../http.ts'
 import { ApiError, readBody, sendJson, unauthorized } from '../http.ts'
 import type { LiveHub } from '../live.ts'
-import type { NodeSourceRow, ReportPayload, ReportedNode } from '../model.ts'
+import type { Platform, ReportPayload } from '../model.ts'
 import { toDevice } from '../model.ts'
 import * as store from '../store.ts'
+import { appliesTo } from '../../../shared/groups.ts'
 
 /** 上报里各个数组的上限，防止一次塞进来太多 */
-const MAX_NODES = 2000
 const MAX_PROBES = 5000
 const MAX_EVENTS = 500
 
 /** Agent 默认每隔这么久上报一次。网页上的「立即探测」也等这个周期 */
 const REPORT_INTERVAL_SEC = 15
 
+/** 超过这么久没上报就当作离线，网页和 Agent 用同一个数 */
+const OFFLINE_AFTER_SEC = 90
+
 export function registerAgentRoutes(router: Router, live: LiveHub): void {
   /**
-   * 设备第一次接入时用注册令牌换自己的设备 id 和设备密钥。
-   * 令牌就是服务端自己的一个会话 token，跟前端登录用同一套账号体系。
+   * 设备接入：用网页上生成的一次性令牌换自己的设备 id 和设备密钥。
+   *
+   * 令牌跟登录会话是两回事。它会出现在命令行里，可能被终端历史、日志、截图带走，
+   * 所以有独立的生命周期：只能成功一次，半小时作废，库里只存散列。
+   *
+   * 重复接入的设备要带上自己上一次拿到的密钥，服务端才认这个 id 是它本人；
+   * 没带或者对不上就发一套新的 id，免得谁都能顶掉别人的设备。
    */
   router.post('/agent/register', async ({ req, res }) => {
     const token = bearer(req.headers.authorization)
-    if (!token) throw unauthorized('注册时要在 Authorization 头里带上网页上生成的令牌。')
-    // 会话表里存的是散列，传原文进去永远查不到
-    const user = await store.sessionUser(tokenHash(token))
-    if (!user) throw unauthorized('注册令牌不对或者已经过期了，请在设备页重新生成。')
+    if (!token) throw unauthorized('接入时要在 Authorization 头里带上设备页生成的令牌。')
 
     const input = asRecord(await readBody(req))
     const name = text(input.name)
     const hostname = text(input.hostname)
-    const platform = input.platform === 'linux' ? 'linux' : 'macos'
+    const platform = parsePlatform(input.platform)
     if (!name) throw new ApiError(400, '请填写设备名称。', 'name')
     if (name.length > 60) throw new ApiError(400, '设备名称最多 60 个字。', 'name')
     if (!hostname) throw new ApiError(400, '请填写主机名。', 'hostname')
 
-    const id = text(input.id) || `dev_${randomHex(9)}`
-    const existing = await store.findDeviceRow(id)
+    const claimed = text(input.id)
+    const claimedSecret = text(input.secret)
+    // 先看它是不是原来那台设备：id 对得上、密钥也对得上，才继续用这个 id
+    const known = claimed ? await store.findDeviceRow(claimed) : null
+    const reuse = Boolean(known && claimedSecret && sameSecret(known.secret, claimedSecret))
+    if (known && !reuse) {
+      await store.insertEvent({
+        at: new Date().toISOString(),
+        kind: 'device-rejected',
+        severity: 'warn',
+        deviceId: known.id,
+        groupId: null,
+        nodeId: null,
+        message: `有人拿着「${known.name}」的设备 id 想要接入，密钥对不上，已经发给它一个新的身份`,
+      })
+    }
+    const id = reuse ? (known as NonNullable<typeof known>).id : `dev_${randomHex(9)}`
+
+    // 令牌在这一步作废。先消耗再写设备：并发用同一个令牌时只有一条能通过
+    const consumed = await store.consumeEnrollToken(token, id)
+    if (!consumed) throw unauthorized('接入令牌不对、已经用过或者过期了，请在设备页重新生成。')
 
     const { before, after } = await store.upsertDevice({
       id,
@@ -56,11 +79,12 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
       clashApi: text(input.clashApi),
       probeInbound: text(input.probeInbound),
       dataDir: text(input.dataDir),
-      // 密钥只发一次：重新接入时沿用旧的，否则 Agent 手里那份当场作废，
-      // 下一次上报就会被判成凭据不对
-      secret: existing?.secret || randomHex(32),
+      proxyListen: input.proxyListen === undefined ? undefined : text(input.proxyListen),
+      // 密钥发一次就固定下来，之后靠它认设备
+      secret: reuse && known ? known.secret : randomHex(32),
     })
 
+    const by = consumed.created_by ? (await store.findUserById(consumed.created_by))?.username ?? null : null
     await store.insertEvent({
       at: new Date().toISOString(),
       kind: 'device-online',
@@ -74,9 +98,9 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
     live.update(['devices', 'runtimes', 'nodes', 'probes', 'events'])
     sendJson(res, before ? 200 : 201, {
       device: toDevice(after),
-      // 之后 Agent 用它做身份，不再需要网页上的令牌
+      // 之后 Agent 用它做身份，令牌已经作废
       secret: after.secret,
-      registeredBy: user.username,
+      registeredBy: by,
     })
   }, 'open')
 
@@ -91,28 +115,39 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
     if (!payload || typeof payload !== 'object') throw new ApiError(400, '上报内容不是有效的对象。')
     const report = payload as ReportPayload
 
-    const scopes = new Set<'devices' | 'nodes' | 'runtimes' | 'probes' | 'events'>()
+    const scopes = new Set<'devices' | 'runtimes' | 'probes' | 'events'>()
 
-    // 设备自报的字段先落库，离线时会话过期也不影响它继续上报
-    await store.upsertDevice({
+    // 设备自报的字段先落库。密钥不在这里改：上报已经是用密钥认证过的，
+    // 再允许它顺手换一个，拿到过一次密钥的人就能把设备整个抢走
+    const { before, after } = await store.upsertDevice({
       id: device.id,
       name: text(report.device?.name) || device.name,
       hostname: text(report.device?.hostname) || device.name,
-      platform: report.device?.platform === 'linux' ? 'linux' : 'macos',
+      platform: parsePlatform(report.device?.platform),
       osVersion: text(report.device?.osVersion),
       agentVersion: text(report.device?.agentVersion),
       singboxVersion: text(report.device?.singboxVersion),
       clashApi: text(report.device?.clashApi),
       probeInbound: text(report.device?.probeInbound),
       dataDir: text(report.device?.dataDir),
-      secret: text(report.device?.secret),
+      proxyListen:
+        report.device?.proxyListen === undefined ? undefined : text(report.device.proxyListen),
+      singboxError: singboxErrorOf(report.device),
     })
     scopes.add('devices')
 
-    const nodes = Array.isArray(report.nodes) ? report.nodes.slice(0, MAX_NODES) : []
-    if (nodes.length) {
-      await store.upsertReportedNodes(nodes)
-      scopes.add('nodes')
+    // 掉线记过事件的设备又报上来了，补一条上线，事件页上离线和上线是成对的
+    if (before?.offline_noted) {
+      await store.insertEvent({
+        kind: 'device-online',
+        severity: 'good',
+        deviceId: device.id,
+        groupId: null,
+        nodeId: null,
+        message: `「${after.name}」重新上线了`,
+      })
+      scopes.add('events')
+      scopes.add('runtimes')
     }
 
     const runtime = Array.isArray(report.runtime) ? report.runtime : []
@@ -209,54 +244,12 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
     sendJson(res, 200, { ok: true, abandoned: Boolean(row.failed_at), attempts: row.attempts })
   }, 'agent')
 
-  /**
-   * 拉取订阅。订阅链接只存在服务端，由服务端交给 Agent，设备不必知道链接和 token。
-   * force 表示现在就得拉：用户在网页上点了「立即刷新」，或者这个订阅还没拉过。
-   * 没给这个标记时 Agent 自己按节奏来，不必每轮都去订阅站要一次。
-   */
-  const sourceRef = (row: NodeSourceRow) => ({
-    id: row.id,
-    name: row.name,
-    url: row.url,
-    force: Boolean(row.refresh_requested_at) || !row.last_fetched_at,
-  })
-
-  router.get('/agent/sources', async ({ res, device }) => {
-    if (!device) throw unauthorized('设备凭据不对，请重新接入。')
-    const rows = await store.listSources()
-    sendJson(res, 200, { items: rows.filter((row) => row.enabled).map(sourceRef) })
-  }, 'agent')
-
-  /** 设备拉完订阅后回报结果，服务端记下节点数和出错原因 */
-  router.post('/agent/sources/:id/result', async ({ req, res, params, device }) => {
-    if (!device) throw unauthorized('设备凭据不对，请重新接入。')
-    const source = await store.findSource(params.id)
-    if (!source) throw new ApiError(404, '找不到这个订阅。')
-    const input = asRecord(await readBody(req))
-    const error = text(input.error)
-    const nodes = Array.isArray(input.nodes) ? input.nodes.slice(0, MAX_NODES) : []
-
-    // 拉取失败就别动节点：订阅站临时挂了不代表节点没了，
-    // 清空节点池会把所有分组的候选一起弄没。
-    if (!error && nodes.length) {
-      await store.syncSourceNodes(params.id, source.name, normalizeNodes(nodes))
-    }
-
-    const nodeCount = Number.isInteger(input.nodeCount)
-      ? (input.nodeCount as number)
-      : nodes.length
-    await store.recordFetch(params.id, { error: error || null, nodeCount })
-    live.update(['nodes', 'devices'])
-    sendJson(res, 200, { ok: true })
-  }, 'agent')
-
   /** Agent 首轮启动时问一次「我该做什么」，省得等一个上报周期 */
   router.get('/agent/bootstrap', async ({ res, device }) => {
     if (!device) throw unauthorized('设备凭据不对，请重新接入。')
-    const [groups, targets, sources, nodes, pending, runtimes] = await Promise.all([
+    const [groups, targets, nodes, pending, runtimes] = await Promise.all([
       store.listGroups(),
       store.listTargets(),
-      store.listSources(),
       store.listStoredNodes(),
       store.listPendingSwitches(device.id),
       store.listRuntimeRows(device.id),
@@ -266,51 +259,36 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
     const pinned = new Map(runtimes.map((r) => [r.group_id, r.pinned_node_id]))
     sendJson(res, 200, {
       device: await store.findDevice(device.id),
-      groups: groups.filter((g) => g.deviceIds.includes(device.id)),
+      // 分组一个都没指定设备时表示所有设备，所以这里不能写 deviceIds.includes
+      groups: groups.filter((g) => appliesTo(g, device.id)),
       targets,
       nodes,
-      sources: sources.filter((s) => s.enabled).map(sourceRef),
       pins: Object.fromEntries(
         [...pinned].filter(([, nodeId]) => nodeId),
       ),
       pending,
-      offlineAfterSec: 90,
-      reportIntervalSec: 15,
+      offlineAfterSec: OFFLINE_AFTER_SEC,
+      reportIntervalSec: REPORT_INTERVAL_SEC,
     })
   }, 'agent')
 }
 
+// ---------------------------------------------------------------- 辅助
+
 /**
- * Agent 报上来的节点过一道手：字段缺失的直接丢掉，别让半条记录进库。
- * 节点是订阅内容解析出来的，格式不可信。
+ * 上报里的 sing-box 错误。没有这个字段是旧版 Agent，保留库里的值；
+ * 报了空值表示现在正常。太长的截断，别让一份报错把设备页撑开
  */
-function normalizeNodes(raw: unknown[]): Array<ReportedNode & { identity: string }> {
-  const out: Array<ReportedNode & { identity: string }> = []
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue
-    const node = item as Record<string, unknown>
-    const tag = text(node.tag)
-    const server = text(node.server)
-    const port = Number(node.port)
-    const protocol = text(node.protocol)
-    const identity = text(node.identity)
-    if (!tag || !server || !protocol) continue
-    if (!Number.isInteger(port) || port < 1 || port > 65535) continue
-    out.push({
-      tag,
-      protocol: protocol as ReportedNode['protocol'],
-      server,
-      port,
-      region: text(node.region),
-      outbound: (node.outbound ?? {}) as ReportedNode['outbound'],
-      // 没有 identity 就没法合并重复节点，用 tag 兜底
-      identity: identity || `${protocol}|${server}|${port}|${tag}`,
-    })
-  }
-  return out
+function singboxErrorOf(device: ReportPayload['device'] | undefined): string | null | undefined {
+  if (!device || !('singboxError' in device)) return undefined
+  const value = text(device.singboxError)
+  return value ? value.slice(0, 1000) : null
 }
 
-// ---------------------------------------------------------------- 辅助
+/** Agent 自报的平台，认不出来的按 macOS 算（早期版本只分 macos 和 linux） */
+function parsePlatform(value: unknown): Platform {
+  return value === 'linux' || value === 'windows' ? value : 'macos'
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object') return {}

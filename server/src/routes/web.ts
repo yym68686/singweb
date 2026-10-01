@@ -19,10 +19,14 @@ import type {
 import type { PendingSwitchRow, RuntimeRow } from '../model.ts'
 import { ApiError, conflict, notFound, readBody, sendJson, type Router } from '../http.ts'
 import type { LiveHub } from '../live.ts'
+import type { SubscriptionScheduler } from '../subscriptions.ts'
 import { OFFLINE_AFTER_MS, isOnline, toDevice, toGroup, toNodeSource, toProxyNode } from '../model.ts'
 import { toGroupRuntime, type RuntimeSnapshot } from '../../../shared/runtime.ts'
+import { DEFAULT_LISTEN, buildConfig } from '../../../shared/singbox.ts'
 import * as store from '../store.ts'
-import { checkGroup, checkTarget } from '../validate.ts'
+import { groupDeviceIds, appliesTo } from '../../../shared/groups.ts'
+import { candidateIds } from '../../../shared/candidates.ts'
+import { checkCatchAll, checkGroup, checkTarget } from '../validate.ts'
 
 /** 分组或目标写完之后，受影响的数据范围 */
 const GROUP_SCOPES: UpdateScope[] = ['groups', 'runtimes', 'nodes']
@@ -64,7 +68,7 @@ function runtimeItems(
     const group = groupById.get(row.group_id)
     const device = deviceById.get(row.device_id)
     // 分组删了、设备删了，或者分组不再管这台设备：这条运行状态是残留的
-    if (!group || !device || !group.deviceIds.includes(row.device_id)) return []
+    if (!group || !device || !appliesTo(group, row.device_id)) return []
     const snapshot: RuntimeSnapshot = {
       groupId: row.group_id,
       activeNodeId: row.active_node_id,
@@ -117,7 +121,7 @@ interface PendingSwitch {
   failedAt: string | null
 }
 
-export function registerWebRoutes(router: Router, live: LiveHub): void {
+export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: SubscriptionScheduler): void {
   // ---------------------------------------------------------------- 健康检查
 
   router.get('/health', ({ res }) => {
@@ -137,7 +141,7 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     const exitBy = new Map<string, Array<{ groupId: string; groupName: string; nodeId: string | null }>>()
     for (const row of runtimes) {
       const group = groupById.get(row.group_id)
-      if (!group || !group.deviceIds.includes(row.device_id)) continue
+      if (!group || !appliesTo(group, row.device_id)) continue
       const list = exitBy.get(row.device_id) ?? []
       list.push({ groupId: group.id, groupName: group.name, nodeId: row.active_node_id })
       exitBy.set(row.device_id, list)
@@ -212,7 +216,7 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     if (!device) throw notFound('找不到这台设备。')
     const group = await store.findGroup(params.groupId)
     if (!group) throw notFound('找不到这个分组。')
-    if (!group.deviceIds.includes(params.deviceId)) {
+    if (!appliesTo(group, params.deviceId)) {
       throw conflict(`这个分组没有用到「${device.name}」。`)
     }
 
@@ -224,9 +228,18 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
       if (!node) throw notFound('找不到这个节点。')
       if (!node.enabled) throw conflict(`节点「${node.tag}」现在是停用状态，先启用它。`)
 
-      // 逐个挑选的候选列表之外的节点不能选，设备那边不会把它算进来
-      if (group.candidates.mode === 'list' && !group.candidates.nodeIds.includes(nodeId)) {
-        throw new ApiError(400, '这个节点不属于该分组的候选节点。', 'nodeId')
+      // 不在候选范围内的节点不能选，设备那边不会把它算进来。
+      // 逐个挑选看列表，按条件加入要拿当前节点池现算一遍——条件没变，订阅变了，
+      // 候选也会跟着变，所以不能只看保存时算过的结果。
+      if (group.candidates.mode === 'list') {
+        if (!group.candidates.nodeIds.includes(nodeId)) {
+          throw new ApiError(400, '这个节点不属于该分组的候选节点。', 'nodeId')
+        }
+      } else {
+        const pool = (await store.listAllNodeRows()).map(toProxyNode)
+        if (!candidateIds(group, pool).includes(nodeId)) {
+          throw new ApiError(400, '这个节点不符合该分组的筛选条件。', 'nodeId')
+        }
       }
 
       /*
@@ -293,6 +306,56 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     },
   )
 
+  /**
+   * 配置预览：用真正下发时那套 buildConfig 生成一份配置。
+   *
+   * 为什么不在前端拼：节点的 outbound（密码、UUID 之类）只在服务端有，
+   * 前端的节点对象里根本没有，拼不出来。而且和真正下发用的是同一个函数，
+   * 预览里看到的规则顺序、selector、兜底设置，必然跟设备拿到的一致。
+   *
+   * group 给了就预览这份还没保存的草稿（编辑页用），没给就预览已保存的全部分组。
+   * 密钥位置换成占位符：clashSecret 是 Agent 在本机生成的，不该发到浏览器上。
+   */
+  router.post('/config/preview', async ({ req, res }) => {
+    const input = body(await readBody(req))
+    const deviceId = typeof input.deviceId === 'string' ? input.deviceId : ''
+    const deviceRow = await store.findDeviceRow(deviceId)
+    if (!deviceRow) throw notFound('找不到这台设备。')
+    const device = toDevice(deviceRow)
+
+    const [saved, targets, nodes] = await Promise.all([
+      store.listGroups(),
+      store.listTargetRows(),
+      store.listAllNodeRows(),
+    ])
+
+    let groups = saved.filter((g) => appliesTo(g, deviceId))
+    if (input.group !== undefined) {
+      // 草稿还没入库，先按保存时的同一套规则校验，再当成已保存的那个分组
+      const shape = checkGroup(
+        input.group,
+        new Set(targets.map((t) => t.id)),
+        new Set(nodes.map((n) => n.id)),
+      )
+      const draftId = typeof (input.group as Record<string, unknown>).id === 'string'
+        ? ((input.group as Record<string, unknown>).id as string)
+        : ''
+      // 草稿也按自己的 deviceIds 判断用不用在这台设备上，跟保存后的行为一致
+      groups = appliesTo(shape, deviceId)
+        ? [...saved.filter((g) => g.id !== draftId), { ...shape, id: draftId || 'new', updatedAt: '' }]
+        : groups.filter((g) => g.id !== draftId)
+    }
+
+    const built = buildConfig({
+      nodes: await store.listStoredNodes(),
+      groups,
+      listen: device.proxyListen || DEFAULT_LISTEN,
+      managed: { clashApi: device.clashApi, clashSecret: '', dataDir: device.dataDir },
+      redact: true,
+    })
+    sendJson(res, 200, { config: built.config, warnings: built.warnings })
+  })
+
   // ---------------------------------------------------------------- 节点
 
   router.get('/nodes', async ({ res }) => {
@@ -330,8 +393,10 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     if (name.length > 60) throw new ApiError(400, '订阅名称最多 60 个字。', 'name')
     const url = checkSubscriptionUrl(input.url)
     const row = await store.insertSource({ name, url })
-    live.update(['nodes'])
-    sendJson(res, 201, { source: toNodeSource(row) })
+    // 新建之后立刻拉一次：节点池该马上有这个订阅的节点，不用等下一轮调度
+    await subscriptions.refreshNow(row.id)
+    const fresh = await store.findSource(row.id)
+    sendJson(res, 201, { source: toNodeSource(fresh ?? row), fetched: true })
   })
 
   router.patch('/sources/:id', async ({ req, res, params }) => {
@@ -348,26 +413,42 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     }
     if (typeof input.enabled === 'boolean') patch.enabled = input.enabled
     if (!Object.keys(patch).length) throw new ApiError(400, '没有要修改的内容。')
-    const updated = await store.updateSource(params.id, patch)
+    const urlChanged = patch.url !== undefined && patch.url !== row.url
+    const enabledChanged = patch.enabled !== undefined && patch.enabled !== row.enabled
+    let updated = await store.updateSource(params.id, patch)
     if (!updated) throw notFound('找不到这个订阅。')
-    live.update(['nodes'])
+    // 换了地址就当是同一个订阅现在指向了别处；从停用改成启用也要拉一次，
+    // 否则它会一直空着等下一轮调度
+    if (updated.enabled && (urlChanged || (enabledChanged && !row.enabled))) {
+      await subscriptions.refreshNow(params.id)
+      updated = (await store.findSource(params.id)) ?? updated
+    } else {
+      live.update(['sources', 'nodes'])
+    }
     sendJson(res, 200, { source: toNodeSource(updated) })
   })
 
   /**
-   * 让设备重新拉一次订阅。
+   * 立即拉一次这个订阅。
    *
-   * 服务端自己不去联网取订阅——订阅链接和 token 不该离开服务端，但也不该由服务端去访问；
-   * 真正取内容的一直是设备上的 Agent。这里只打个时间戳，Agent 下一轮 bootstrap 看到
-   * 就知道该刷新了，然后照常把结果报回来。
+   * 拉订阅的一直是服务端自己：设备的接入与否跟节点池无关，没有设备也要能解析出节点。
+   * 同步做完再回，调用方拿到的是这次的结果，不用等下一轮。
    */
   router.post('/sources/:id/refresh', async ({ res, params }) => {
     const row = await store.findSource(params.id)
     if (!row) throw notFound('找不到这个订阅。')
     if (!row.enabled) throw conflict(`订阅「${row.name}」现在是停用状态，先启用它。`)
-    await store.requestSourceRefresh(params.id)
-    live.update(['nodes'])
-    sendJson(res, 200, { ok: true, requestedAt: new Date().toISOString() })
+    const result = await subscriptions.refreshNow(params.id)
+    const fresh = await store.findSource(params.id)
+    // 拉取失败不算接口失败：上次的节点还留着，页面要的是「这次拉到了什么」。
+    // 用 ok 和 error 告诉它这一次的结果，而不是回 5xx 让它以为请求没送到。
+    sendJson(res, 200, {
+      ok: result.error === null,
+      error: result.error,
+      nodeCount: result.nodeCount,
+      refreshedAt: new Date().toISOString(),
+      source: fresh ? toNodeSource(fresh) : null,
+    })
   })
 
   /**
@@ -378,7 +459,7 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     const row = await store.findSource(params.id)
     if (!row) throw notFound('找不到这个订阅。')
     await store.deleteSource(params.id)
-    live.update(['nodes', 'runtimes'])
+    live.update(['sources', 'nodes', 'runtimes'])
     res.writeHead(204, { 'cache-control': 'no-store' }).end()
   })
 
@@ -466,8 +547,9 @@ export function registerWebRoutes(router: Router, live: LiveHub): void {
     const before = toGroup(existing)
     const shape = await prepareGroup(await readBody(req), before)
     await store.updateGroup(params.id, shape)
-    // 设备列表变了的话，多出来的运行状态要清掉
-    await store.pruneRuntime(shape.deviceIds, [params.id])
+    // 设备列表变了的话，多出来的运行状态要清掉。
+    // 空列表表示所有设备，包括以后加的，实际范围要按当前的设备表算出来。
+    await store.pruneRuntime(groupDeviceIds(shape, await store.listDeviceRows()), [params.id])
     // 停用的节点不该留在候选列表里，挡一道免得设备那边拿到空列表
     await store.clearDanglingRefs(
       shape.candidates.mode === 'list' ? shape.candidates.nodeIds : [],
@@ -611,10 +693,12 @@ async function prepareGroup(
 ): Promise<Omit<Group, 'id' | 'updatedAt'>> {
   const raw = body(input)
 
-  const [devices, nodes, targets] = await Promise.all([
+  const [devices, nodes, targets, groups] = await Promise.all([
     store.listDeviceRows(),
-    store.listNodeRows(),
+    // 全部节点：候选里有个已停用订阅的节点不该报错，订阅只是暂时关着
+    store.listAllNodeRows(),
     store.listTargetRows(),
+    store.listGroups(),
   ])
 
   const selected = Array.isArray(raw.deviceIds)
@@ -637,6 +721,12 @@ async function prepareGroup(
     raw,
     new Set(targets.map((t) => t.id)),
     new Set(nodes.map((n) => n.id)),
+  )
+
+  // 兜底分组只能有一个：两台设备各有一个、或者所有设备共用一个
+  checkCatchAll(
+    shape,
+    before ? groups.filter((g) => g.id !== before.id) : groups,
   )
 
   // 候选节点全被停用时提醒一句：分组建出来也不会有出口

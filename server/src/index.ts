@@ -14,8 +14,14 @@ import { ApiError, Router, sendJson, toApiError, type AgentIdentity } from './ht
 import { LiveHub } from './live.ts'
 import { registerAgentRoutes } from './routes/agent.ts'
 import { readToken, registerAuthRoutes } from './routes/auth.ts'
+import { registerEnrollRoutes } from './routes/enroll.ts'
+import { registerInstallRoutes } from './routes/install.ts'
+import { registerSubscribeRoutes } from './routes/subscribe.ts'
 import { registerWebRoutes } from './routes/web.ts'
+import { PresenceWatcher } from './presence.ts'
+import { ensureGroups, ensureSshGroup, ensureSshTarget } from './seed.ts'
 import { openStatic, type StaticFiles } from './static.ts'
+import { SubscriptionScheduler } from './subscriptions.ts'
 import * as store from './store.ts'
 
 const API_PREFIX = '/api/v1'
@@ -29,15 +35,33 @@ const STATIC_DIR = process.env.STATIC_DIR ?? join(dirname(fileURLToPath(import.m
 
 const router = new Router()
 const live = new LiveHub()
+const subscriptions = new SubscriptionScheduler(live)
+const presence = new PresenceWatcher(live)
 
 async function main(): Promise<void> {
   await migrate()
 
   await ensureAdmin()
 
+  // 默认的探测目标和分组。只在这个库还是空的时候建，之后再怎么重启都不会覆盖
+  // 用户在网页上做过的修改
+  await ensureSshTarget()
+  await ensureSshGroup()
+  await ensureGroups()
+
   registerAuthRoutes(router)
-  registerWebRoutes(router, live)
+  registerWebRoutes(router, live, subscriptions)
   registerAgentRoutes(router, live)
+  // 这几组是「不带登录态」的：订阅链接本身就是一个密钥，
+  // 安装脚本和 Agent 包要能被 curl 直接拉下来
+  registerSubscribeRoutes(router)
+  registerEnrollRoutes(router)
+  registerInstallRoutes(router)
+
+  // 订阅由服务端自己拉：设备的接入与否跟节点池无关，没有设备也照样有节点
+  subscriptions.start()
+  // 设备掉线时没有请求进来，得有人定时看一眼，网页才能及时显示离线
+  presence.start()
 
   const staticFiles = await openStatic(STATIC_DIR)
   if (!staticFiles) {
@@ -72,6 +96,8 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     console.log(`收到 ${signal}，正在退出。`)
     server.close()
+    subscriptions.stop()
+    presence.stop()
     live.close()
     await closePool().catch(() => {})
     process.exit(0)
@@ -163,11 +189,11 @@ async function handle(
 /**
  * 读出登录的账号。每次请求查一次库，会话失效立刻生效。
  *
- * 浏览器把会话放在 Cookie 里；Agent 接入时把同一个会话 token 放在 Authorization 头里，
- * 两种都要认——否则设备页生成的那个注册令牌没法用来接入。
+ * 只认 Cookie。设备接入走的是设备页生成的一次性令牌，跟登录会话没有关系，
+ * 所以这里不再认 Authorization 头——否则一个浏览器会话 token 就能拿来当设备凭据。
  */
 async function readUser(req: IncomingMessage) {
-  const token = readToken(req) ?? bearerToken(req.headers.authorization)
+  const token = readToken(req)
   if (!token) return null
   const row = await store.sessionUser(tokenHash(token)).catch(() => null)
   if (!row) return null

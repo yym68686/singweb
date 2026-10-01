@@ -117,6 +117,12 @@ export interface DeviceRow {
   clash_api: string
   probe_inbound: string
   data_dir: string
+  /** 本机代理的监听地址。sing-box 还没起来、或者起不来时为空 */
+  proxy_listen: string
+  /** 本机 sing-box 起不来的原因，正常时为 null */
+  singbox_error: string | null
+  /** 这次离线已经记过事件了，设备再上报时清掉 */
+  offline_noted: boolean
   note: string | null
   secret: string
   created_at: Date
@@ -131,8 +137,6 @@ export interface NodeSourceRow {
   last_fetched_at: Date | null
   last_error: string | null
   node_count: number
-  /** 有值表示用户在网页上点了「立即刷新」，等设备领走 */
-  refresh_requested_at: Date | null
   created_at: Date
 }
 
@@ -150,6 +154,17 @@ export interface NodeRow {
   source_id: string | null
   identity: string
   updated_at: Date
+}
+
+/** enroll_tokens 表。令牌原文只在生成的那一刻出现一次 */
+export interface EnrollTokenRow {
+  id: string
+  token_hash: string
+  created_by: string | null
+  created_at: Date
+  expires_at: Date
+  used_at: Date | null
+  device_id: string | null
 }
 
 /** targets 表。spec 是按 kind 拆开的字段 */
@@ -255,6 +270,8 @@ export function toDevice(row: DeviceRow, now = Date.now()): Device {
     clashApi: row.clash_api,
     probeInbound: row.probe_inbound,
     dataDir: row.data_dir,
+    proxyListen: row.proxy_listen,
+    singboxError: row.singbox_error ?? null,
   }
   if (row.note) device.note = row.note
   return device
@@ -265,7 +282,7 @@ export function isOnline(row: DeviceRow, now = Date.now()): boolean {
   return now - row.last_seen_at.getTime() < OFFLINE_AFTER_MS
 }
 
-/** 下发给前端的节点：不带出站内容和订阅 id */
+/** 下发给前端的节点：不带出站内容（里面有节点的密码） */
 export function toProxyNode(row: NodeRow): ProxyNode {
   return {
     id: row.id,
@@ -276,16 +293,13 @@ export function toProxyNode(row: NodeRow): ProxyNode {
     region: row.region,
     enabled: row.enabled,
     source: row.source,
+    sourceId: row.source_id,
   }
 }
 
 /** 完整的节点记录，只有 Agent 用得到 */
 export function toStoredNode(row: NodeRow): StoredNode {
-  return {
-    ...toProxyNode(row),
-    outbound: row.outbound,
-    sourceId: row.source_id,
-  }
+  return { ...toProxyNode(row), outbound: row.outbound }
 }
 
 export function toNodeSource(row: NodeSourceRow): NodeSource {
@@ -298,7 +312,6 @@ export function toNodeSource(row: NodeSourceRow): NodeSource {
     lastError: row.last_error,
     nodeCount: row.node_count,
     createdAt: row.created_at.toISOString(),
-    refreshRequested: Boolean(row.refresh_requested_at),
   }
 }
 
@@ -403,8 +416,8 @@ export function toProbeCell(row: ProbeRow) {
 // ---------------------------------------------------------------- 上报载荷
 
 /**
- * Agent 上报的一份快照。一次请求里可以带多个设备，正常只有一台。
- * 分组运行状态和探测结果都按设备分组，省得每台设备发一次请求。
+ * Agent 上报的一份快照：设备自己的信息、各分组的运行状态、探测结果和事件。
+ * 节点不在里面——节点池只来自服务端拉的订阅，设备只用不报。
  */
 export interface ReportPayload {
   device: {
@@ -418,10 +431,10 @@ export interface ReportPayload {
     clashApi?: string
     probeInbound?: string
     dataDir?: string
-    secret?: string
+    proxyListen?: string
+    /** 本机 sing-box 起不来的原因，null 表示正常。旧版 Agent 不报这个字段 */
+    singboxError?: string | null
   }
-  /** Agent 本机 sing-box 配置里的节点；有订阅时订阅里的节点也一并上报 */
-  nodes?: ReportedNode[]
   runtime?: ReportedRuntime[]
   probes?: ReportedProbe[]
   events?: ReportedEvent[]
@@ -429,15 +442,16 @@ export interface ReportPayload {
   pending?: PendingSwitchRow[]
 }
 
-export interface ReportedNode {
+/** 订阅解析出来、准备写进节点池的一个节点 */
+export interface PoolNode {
   tag: string
   protocol: NodeProtocol
   server: string
   port: number
   region: string
   outbound: NodeOutbound
-  /** 同一个订阅里用来合并重复节点；自己配置里的节点留空 */
-  identity?: string
+  /** 服务器、端口、协议和凭据拼成的身份，用来合并重复节点 */
+  identity: string
 }
 
 export interface ReportedRuntime {

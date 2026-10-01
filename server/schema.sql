@@ -32,7 +32,7 @@ create table if not exists devices (
   id              text primary key,
   name            text not null,
   hostname        text not null,
-  platform        text not null check (platform in ('macos', 'linux')),
+  platform        text not null check (platform in ('macos', 'linux', 'windows')),
   os_version      text not null default '',
   agent_version   text not null default '',
   singbox_version text not null default '',
@@ -42,7 +42,7 @@ create table if not exists devices (
   probe_inbound   text not null default '127.0.0.1:2080',
   data_dir        text not null default '/etc/singweb',
   note            text,
-  -- Agent 生成 Clash API 密钥时用的种子，不发给前端
+  -- 设备密钥：注册时发给 Agent，之后每次请求都用它认证。不发给前端
   secret          text not null default '',
   created_at      timestamptz not null default now()
 );
@@ -207,7 +207,76 @@ alter table pending_switches
 alter table pending_switches
   add column if not exists failed_at timestamptz;
 
--- 网页上点了"立即刷新"时打上的时间戳，Agent 下一轮 bootstrap 领走。
--- 服务端自己不联网拉订阅：订阅链接只该下发给设备，由设备去取。
+-- 早期版本里"立即刷新"要等设备来领，用这一列做标记。现在订阅由服务端自己拉，
+-- 这一列不再读写，留着只是为了不动已有的库。
 alter table node_sources
   add column if not exists refresh_requested_at timestamptz;
+
+-- 平台多了 Windows。建表语句里的检查只对新库生效，已有的库要把旧约束换掉
+alter table devices drop constraint if exists devices_platform_check;
+alter table devices
+  add constraint devices_platform_check check (platform in ('macos', 'linux', 'windows'));
+
+-- 设备上本机代理的监听地址（Agent 管理的 sing-box 的 mixed 入站），设备页照着它写使用说明
+alter table devices
+  add column if not exists proxy_listen text not null default '';
+
+-- 本机 sing-box 起不来时的原因（端口被占、配置检查没过、找不到程序），设备页照着它提示怎么修。
+-- 空表示正常
+alter table devices
+  add column if not exists singbox_error text;
+
+-- 这台设备的离线已经记过事件、推过网页了。在线与否是按 last_seen_at 现算的，
+-- 没有这一列的话，服务端每扫一遍都会把同一次离线再记一遍；设备再上报时清掉
+alter table devices
+  add column if not exists offline_noted boolean not null default false;
+
+-- ---------------------------------------------------------------- 设置
+
+-- 服务端自己的少量键值：singweb 订阅链接的 token、一次性初始化的标记
+create table if not exists settings (
+  key        text primary key,
+  value      text not null,
+  updated_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------- 设备接入
+
+-- 设备页「接入新设备」生成的一次性令牌。跟登录会话分开：令牌会出现在命令行里，
+-- 被别人看到也只能接入一台设备，而且用过一次、或者过了期限就作废。库里只存散列。
+create table if not exists enroll_tokens (
+  id         text primary key,
+  token_hash text not null unique,
+  created_by text references users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at    timestamptz,
+  -- 用这个令牌接入的设备，网页靠它知道"刚才那条命令跑起来了"
+  device_id  text
+);
+
+-- ---------------------------------------------------------------- 清理
+
+-- 早期版本的 Agent 会把本机 sing-box 配置里的节点报上来，记成「本机配置」。
+-- 现在设备只用 singweb 下发的节点，这些影子节点没有来源，也不会再更新
+delete from nodes where source_id is null and source = '本机配置';
+delete from probes p where not exists (select 1 from nodes n where n.id = p.node_id);
+
+-- 早期版本每次上报都往探测历史里追加一条，同一次探测会重复好几回。
+-- 按探测时间去重，留下的仍然是从旧到新
+update probes p
+   set history = dedup.history
+  from (
+    select device_id, node_id, target_id,
+           coalesce(jsonb_agg(item order by first_idx), '[]'::jsonb) as history
+      from (
+        select device_id, node_id, target_id, item, min(idx) as first_idx
+          from probes, jsonb_array_elements(history) with ordinality as t(item, idx)
+         group by device_id, node_id, target_id, item
+      ) as items
+     group by device_id, node_id, target_id
+  ) as dedup
+ where p.device_id = dedup.device_id
+   and p.node_id = dedup.node_id
+   and p.target_id = dedup.target_id
+   and jsonb_array_length(p.history) <> jsonb_array_length(dedup.history);

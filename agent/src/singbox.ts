@@ -1,15 +1,9 @@
 /**
- * 跟设备上那个 sing-box 打交道。
+ * 跟 Agent 自己起的那个 sing-box 打交道：只走 Clash API。
  *
- * 这里刻意不去改写用户的 sing-box 配置：那份配置是用户自己维护的，Agent 只往里加一个
- * 阻断规则集文件，切换节点走 Clash API，用户重启 sing-box 也不会丢东西。
- * 需要补进配置里的片段由网页生成，用户自己贴。
+ * 配置文件和进程由 Supervisor 管，这里只负责切 selector、读 selector 和探活。
+ * Clash API 只监听本机，密钥是 Agent 生成的，不离开这台机器。
  */
-
-import { chmod, mkdir, rename, stat, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import type { Device, Group } from '../../shared/types.ts'
-import { blockRuleSetContent, blockRuleSetPath, blockRuleSetTag } from '../../shared/singbox.ts'
 
 /** Clash API 的响应超时。本机调用，给短一点，卡住了就是 sing-box 没起来 */
 const API_TIMEOUT_MS = 3000
@@ -106,52 +100,4 @@ export class ClashApi {
     const text = await response.text()
     return text ? (JSON.parse(text) as unknown) : null
   }
-}
-
-/**
- * 写阻断规则集。平时是空的，全部不可用时匹配所有 TCP 和 UDP，
- * 这样连接不会被悄悄改成直连，而是直接断掉。
- *
- * 先写临时文件再改名：sing-box 可能正在读这个文件，改到一半会被读成坏 JSON。
- */
-export async function writeBlockRuleSet(
-  device: Pick<Device, 'dataDir'>,
-  group: Pick<Group, 'selectorTag'>,
-  blocking: boolean,
-): Promise<void> {
-  const path = blockRuleSetPath(device, group)
-  await mkdir(dirname(path), { recursive: true })
-  const content = blocking ? blockRuleSetContent.blocking : blockRuleSetContent.idle
-  const temp = `${path}.tmp`
-  await writeFile(temp, `${JSON.stringify(content, null, 2)}\n`, 'utf8')
-  await rename(temp, path)
-}
-
-/** 规则集文件在不在。配置里引用了它但文件不存在时，sing-box 会起不来 */
-export async function blockRuleSetExists(
-  device: Pick<Device, 'dataDir'>,
-  group: Pick<Group, 'selectorTag'>,
-): Promise<boolean> {
-  try {
-    return (await stat(blockRuleSetPath(device, group))).isFile()
-  } catch {
-    return false
-  }
-}
-
-/** 探测进程也要一份空规则集，否则主配置里的规则集引用在探测进程里解析不了 */
-export async function ensureDataDir(device: Pick<Device, 'dataDir'>): Promise<void> {
-  const dir = device.dataDir
-  if (!dir) return
-  await mkdir(dir, { recursive: true })
-  // 目录里有探测用的配置，里面带着节点凭据
-  await chmod(dir, 0o700).catch(() => {})
-}
-
-export function selectorTagOf(group: Pick<Group, 'selectorTag'>): string {
-  return group.selectorTag
-}
-
-export function blockTagOf(group: Pick<Group, 'selectorTag'>): string {
-  return blockRuleSetTag(group)
 }

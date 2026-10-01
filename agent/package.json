@@ -1,6 +1,6 @@
 {
   "name": "@singweb/agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "singweb 的本机 Agent：把设备上的 sing-box 接进面板",
   "type": "module",
@@ -13,6 +13,6 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "engines": {
-    "node": ">=22.6"
+    "node": "^22.18.0 || >=23.6.0"
   }
 }

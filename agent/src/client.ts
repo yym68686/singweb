@@ -1,8 +1,11 @@
 /**
  * 跟管理服务通信。
  *
- * 两种身份：接入时用网页上生成的注册令牌（就是服务端的一个会话 token），
- * 接入之后一直用设备密钥。密钥只在接入那一次返回，之后本地文件里存一份。
+ * 两种身份：接入时用网页上生成的一次性令牌，接入之后一直用设备密钥。
+ * 密钥只在接入那一次返回，之后本地文件里存一份。
+ *
+ * 订阅不经过这里：上游有几个订阅、链接是什么，设备一概不知道。
+ * 节点池由服务端自己拉取和归一化，设备只拿归一化之后的结果。
  */
 
 import { readFile } from 'node:fs/promises'
@@ -11,27 +14,17 @@ import type {
   Device,
   Group,
   NodeHealth,
-  NodeSource,
+  Platform,
   ProbeDetail,
   ProbeSample,
-  ProxyNode,
   StoredNode,
   SwitchRecord,
   Target,
 } from '../../shared/types.ts'
-import type { ParsedNode } from '../../shared/subscription.ts'
-import { parseJsonProxies, parseSubscription } from '../../shared/subscription.ts'
 import { apiBase } from './config.ts'
 
-/** 上报的请求体可能很大（几千个节点），超时给足；拉订阅更长 */
+/** 上报的请求体可能不小（几千条探测结果），超时给足 */
 const REQUEST_TIMEOUT_MS = 30_000
-const FETCH_TIMEOUT_MS = 60_000
-
-/**
- * 拉订阅时用的 User-Agent。订阅站靠它决定返回什么格式，
- * 也靠它决定放不放行——写错不是格式不对，是被挡在门外。
- */
-const SUBSCRIPTION_UA = 'v2rayN/6.31'
 
 export class ApiClient {
   private readonly server: string
@@ -46,21 +39,30 @@ export class ApiClient {
     return apiBase(this.server)
   }
 
-  /** 接入：用网页上的注册令牌换设备 id 和设备密钥 */
-  async register(input: {
-    token: string
-    id: string | null
-    name: string
-    hostname: string
-    platform: 'macos' | 'linux'
-    osVersion: string
-    agentVersion: string
-    singboxVersion: string
-    clashApi: string
-    probeInbound: string
-    dataDir: string
-  }): Promise<{ device: Device; secret: string }> {
-    const result = await this.request('POST', '/agent/register', input, input.token)
+  /**
+   * 接入：用网页上的一次性令牌换设备 id 和设备密钥。
+   *
+   * 重新接入时带上原来的 id 和密钥，服务端核对上了才沿用原来的 id——
+   * 网页上这台设备的分组、固定的节点、历史事件都还在。
+   */
+  async register(
+    token: string,
+    input: {
+      id: string | null
+      secret: string | null
+      name: string
+      hostname: string
+      platform: Platform
+      osVersion: string
+      agentVersion: string
+      singboxVersion: string
+      clashApi: string
+      probeInbound: string
+      dataDir: string
+      proxyListen: string
+    },
+  ): Promise<{ device: Device; secret: string }> {
+    const result = await this.request('POST', '/agent/register', input, token)
     const record = asRecord(result)
     const device = asRecord(record.device)
     const secret = typeof record.secret === 'string' ? record.secret : ''
@@ -100,57 +102,21 @@ export class ApiClient {
     return { abandoned: Boolean(result.abandoned) }
   }
 
-  /** 最新一轮的待办。每次上报都会带回来，这里用于启动时补一次 */
+  /**
+   * 这台设备该用的全部东西：分组、探测目标、节点池、固定的节点和待办。
+   * 每轮开始时拉一次，网页上的改动最多晚一个周期生效。
+   */
   async bootstrap(): Promise<Bootstrap> {
     const result = asRecord(await this.request('GET', '/agent/bootstrap'))
     return {
       groups: arrayOf<Group>(result.groups),
       targets: arrayOf<Target>(result.targets),
       nodes: arrayOf<StoredNode>(result.nodes),
-      sources: arrayOf<SourceRef>(result.sources),
       pending: arrayOf<PendingSwitch>(result.pending),
       pins: pinsOf(result.pins),
+      offlineAfterSec: Number(result.offlineAfterSec) || 90,
       reportIntervalSec: Number(result.reportIntervalSec) || 15,
     }
-  }
-
-  /**
-   * 拉取订阅内容。真正的网络请求在这里做，用 Node 直接发，
-   * 不走代理——订阅服务器通常国内可直连，走了代理反而可能被挡。
-   *
-   * User-Agent 必须伪装成客户端：多数订阅站按 UA 分流，不认识的 UA 直接 403；
-   * 而 Clash、sing-box 这些客户端的 UA 换回来的是 YAML 或 JSON，
-   * 只有 v2rayN 这类用链接列表的才返回统一格式。别改成 singweb-agent。
-   */
-  async fetchSource(source: SourceRef): Promise<string> {
-    const response = await fetch(source.url, {
-      headers: {
-        'user-agent': SUBSCRIPTION_UA,
-        accept: '*/*',
-      },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    })
-    if (!response.ok) {
-      throw new Error(`订阅服务器返回 ${response.status}`)
-    }
-    return response.text()
-  }
-
-  /**
-   * 把某个订阅的拉取结果回报给服务端。节点本身要一起交上去，
-   * 只报个数的话服务端手里只有计数，节点池永远是空的。
-   */
-  async sourceResult(
-    sourceId: string,
-    error: string | null,
-    nodes: ReportedNodeOut[],
-  ): Promise<void> {
-    await this.request('POST', `/agent/sources/${encodeURIComponent(sourceId)}/result`, {
-      error,
-      nodeCount: nodes.length,
-      nodes,
-    })
   }
 
   private async request(
@@ -175,7 +141,7 @@ export class ApiClient {
 
     const text = await response.text()
     if (!response.ok) {
-      throw new Error(messageFrom(text, response.status))
+      throw new ApiError(messageFrom(text, response.status), response.status)
     }
     if (!text) return null
     try {
@@ -183,6 +149,16 @@ export class ApiClient {
     } catch {
       throw new Error('服务端返回的不是 JSON，可能这个地址不是 singweb 的管理服务。')
     }
+  }
+}
+
+/** 服务端明确拒绝的请求。带上状态码，调用方据此区分「凭据作废了」和「网络抖了一下」 */
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
   }
 }
 
@@ -194,25 +170,15 @@ export interface PendingSwitch {
   reason: string
 }
 
-export interface SourceRef {
-  id: string
-  name: string
-  url: string
-  /**
-   * 用户在网页上点了「立即刷新」，或者这个订阅还没拉过。
-   * 为假时 Agent 可以自己决定要不要跳过——每轮都去拉一次订阅太浪费。
-   */
-  force?: boolean
-}
-
 export interface Bootstrap {
   groups: Group[]
   targets: Target[]
   nodes: StoredNode[]
-  sources: SourceRef[]
   pending: PendingSwitch[]
   /** 用户在网页上固定的节点，按分组 id 索引。没有固定的分组不在里面 */
   pins: Record<string, string>
+  /** 服务端多久没收到上报就当设备离线 */
+  offlineAfterSec: number
   reportIntervalSec: number
 }
 
@@ -249,54 +215,11 @@ function pinsOf(value: unknown): Record<string, string> {
   return out
 }
 
-// ---------------------------------------------------------------- 节点上报格式
-
-export interface ReportedNodeOut {
-  tag: string
-  protocol: ProxyNode['protocol']
-  server: string
-  port: number
-  region: string
-  outbound: Record<string, unknown>
-  identity: string
-}
-
-/** 解析出来的订阅节点整理成上报格式 */
-export function toReportedNode(node: ParsedNode): ReportedNodeOut {
-  return {
-    tag: node.tag,
-    protocol: node.protocol,
-    server: node.server,
-    port: node.port,
-    region: node.region,
-    outbound: node.outbound as Record<string, unknown>,
-    identity: identityOf(node),
-  }
-}
-
-/**
- * 订阅内容可能是链接列表，也可能是 Clash / sing-box 的 JSON。
- * 先看开头几个字符就能分清，不用把两种解析都试一遍。
- */
-export function parseSubscriptionBody(body: string): ParsedNode[] {
-  const trimmed = body.trim()
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    return parseJsonProxies(body).nodes
-  }
-  return parseSubscription(body).nodes
-}
-
-/** 服务端用它合并同一订阅里的重复节点，取协议加地址 */
-function identityOf(node: ParsedNode): string {
-  return `${node.protocol}|${node.server}|${node.port}|${node.tag}`
-}
-
 export type {
   AppEvent,
   Device,
   Group,
   NodeHealth,
-  NodeSource,
   ProbeDetail,
   ProbeSample,
   StoredNode,
@@ -305,12 +228,12 @@ export type {
 }
 
 /** Agent 版本，上报给服务端显示用 */
-export const AGENT_VERSION = '0.1.0'
+export const AGENT_VERSION = '0.2.0'
 
-/** 读 package.json 里的版本，读不到就用常量 */
+/** 读 agent/package.json 里的版本，读不到就用常量 */
 export async function readAgentVersion(): Promise<string> {
   try {
-    const raw = await readFile(new URL('../../package.json', import.meta.url), 'utf8')
+    const raw = await readFile(new URL('../package.json', import.meta.url), 'utf8')
     const parsed = JSON.parse(raw) as Record<string, unknown>
     return typeof parsed.version === 'string' ? parsed.version : AGENT_VERSION
   } catch {

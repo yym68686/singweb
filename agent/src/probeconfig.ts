@@ -3,36 +3,43 @@
  *
  * 探测要走的路径必须和真实流量一致：从本机出发、由被探测的那个节点出去。
  * 单独起一个 sing-box 进程、用一套只监听本机的入站，主配置一点都不用动。
- * 探测时按「节点 tag」选 SOCKS5 用户，节点就自动变成对应的出站。
+ * 探测时按「节点 id」选 SOCKS5 用户，节点就自动变成对应的出站。
+ *
+ * 用节点 id 而不是 tag 当用户名：tag 是用户起的，可能重复、带中文或超长；
+ * id 是服务端算出来的（sub_/cfg_ 加 20 位十六进制），唯一且天然是 SOCKS 用户名的合法字符。
  */
 
-import type { ProxyNode, StoredNode } from '../../shared/types.ts'
-import { MIN_SINGBOX } from '../../shared/singbox.ts'
+import type { StoredNode } from '../../shared/types.ts'
+import { outboundTags } from '../../shared/singbox.ts'
 
 export const PROBE_INBOUND = 'singweb-probe'
 export const PROBE_SOCKS = 'singweb-probe-socks'
 export const PROBE_SELECTOR = 'singweb-probe-selector'
 
-/** socks 用户名 -> 节点 tag。用户名必须是 socks 里合法的字符，所以 tag 要做映射 */
+/** SOCKS5 用户名的实际长度上限（RFC 1929 是 255，但各家实现普遍卡在 40 上下） */
 const MAX_USERNAME = 40
+/** 节点 id 长这样，可以直接拿来当用户名 */
+const USER_SAFE = /^[A-Za-z0-9._-]{1,40}$/
+
+/** 节点 id -> SOCKS5 用户名 */
+export type ProbeUsers = Map<string, string>
 
 /**
- * 节点 tag 直接当 SOCKS5 用户名用会有两个问题：中文 tag 和超长 tag。
- * 中文在 SOCKS5 的用户名里能过，但为了通用性还是编码成安全字符；
- * 超过 40 个字符的（RFC 1929 的实际上限）截断后加序号，保证不同节点不撞车。
+ * 节点 id 不合法（理论上不会发生）或者跟别的撞了，就退回按 tag 编码：
+ * 中文和特殊字符转成 UTF-8 十六进制，超长的截断后加序号。
  */
-export function probeUsers(nodes: StoredNode[]): Map<string, string> {
+export function probeUsers(nodes: Array<Pick<StoredNode, 'id' | 'tag'>>): ProbeUsers {
   const used = new Set<string>()
   const map = new Map<string, string>()
   for (const node of nodes) {
-    let user = safeUser(node.tag)
+    let user = USER_SAFE.test(node.id) && !used.has(node.id) ? node.id : safeUser(node.tag)
     if (used.has(user)) {
       let n = 2
       while (used.has(`${user}-${n}`) && n < 1000) n += 1
       user = `${user}-${n}`
     }
     used.add(user)
-    map.set(user, node.tag)
+    map.set(node.id, user)
   }
   return map
 }
@@ -93,13 +100,16 @@ const DNS_BASE = 'resolve-base'
 /**
  * 探测进程的完整配置。这里不引入用户的其它配置：
  * 探测只需要"从这个节点出去"这一件事，路由规则和规则集都不需要。
+ *
+ * 出站 tag 由 outboundTags 统一分配，跟主配置同一套规则：节点 tag 撞车时后面加序号。
+ * 用户名到出站的对照表在 probeUsers 里，两处都用节点 id 当键。
  */
-
 export function buildProbeConfig(input: ProbeConfigInput): Record<string, unknown> {
   const users = probeUsers(input.nodes)
+  const tags = outboundTags(input.nodes, [PROBE_SELECTOR])
   const outbounds: Record<string, unknown>[] = input.nodes.map((node) => ({
     ...node.outbound,
-    tag: node.tag,
+    tag: tags.get(node.id) as string,
     // 节点自己的服务器地址必须走 DNS_LOCAL 解析。
     // 不写的话会落到 route.default_domain_resolver（那个走节点出去），
     // 于是"解析节点地址"要先穿过节点才能解析，sing-box 报 DNS query loopback，
@@ -139,11 +149,15 @@ export function buildProbeConfig(input: ProbeConfigInput): Record<string, unknow
         tag: PROBE_SOCKS,
         listen: listenHost,
         listen_port: listenPort,
-        users: [...users.keys()].map((username) => ({ username, password: input.password })),
+        users: [...users.values()].map((username) => ({ username, password: input.password })),
       },
     ],
     outbounds: [
-      { type: 'selector', tag: PROBE_SELECTOR, outbounds: input.nodes.map((n) => n.tag) },
+      {
+        type: 'selector',
+        tag: PROBE_SELECTOR,
+        outbounds: input.nodes.map((n) => tags.get(n.id) as string),
+      },
       ...outbounds,
     ],
     route: {
@@ -155,11 +169,11 @@ export function buildProbeConfig(input: ProbeConfigInput): Record<string, unknow
       // 每个节点看起来都"通过"——那是最坏的情况，面板会显示一份全都好的假象。
       // sing-box 依规则顺序取第一条命中的，所以每条用户规则都要排在兜底之前。
       rules: [
-        ...[...users].map(([username, tag]) => ({
+        ...input.nodes.map((node) => ({
           inbound: PROBE_SOCKS,
-          auth_user: username,
+          auth_user: users.get(node.id) as string,
           action: 'route',
-          outbound: tag,
+          outbound: tags.get(node.id) as string,
         })),
         // 兜底留给 DNS 出站：它的 detour 指向 PROBE_SELECTOR，得有个出口能落
         {
@@ -178,18 +192,6 @@ export function buildProbeConfig(input: ProbeConfigInput): Record<string, unknow
   }
 }
 
-/** 主配置里要补进去的片段检查：节点出站是原样抄的，这里只挑要用的字段 */
-export function outboundFor(node: ProxyNode): { tag: string } {
-  return { tag: node.tag }
-}
-
-export function probeUserOf(nodes: StoredNode[], tag: string): string | null {
-  for (const [user, nodeTag] of probeUsers(nodes)) {
-    if (nodeTag === tag) return user
-  }
-  return null
-}
-
 /** 把 "127.0.0.1:1080" 拆成 sing-box 配置要的 listen 和 listen_port */
 export function splitListen(listen: string): [string, number] {
   const index = listen.lastIndexOf(':')
@@ -198,5 +200,3 @@ export function splitListen(listen: string): [string, number] {
   const port = Number(listen.slice(index + 1))
   return [host, Number.isInteger(port) ? port : 0]
 }
-
-export const MIN_PROBE_SINGBOX = MIN_SINGBOX

@@ -5,18 +5,20 @@
  * 所有函数都是无状态的——服务端自己不保存任何东西，请求之间靠数据库。
  */
 
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
+import { tokenHash } from './auth.ts'
 import { many, newId, one, run, tx } from './db.ts'
 import type {
   DeviceRow,
+  EnrollTokenRow,
   EventRow,
   GroupRow,
   NodeRow,
   NodeSourceRow,
   PendingSwitchRow,
+  PoolNode,
   ProbeRow,
   ReportedEvent,
-  ReportedNode,
   ReportedProbe,
   ReportedRuntime,
   RuntimeRow,
@@ -166,21 +168,10 @@ export async function recordFetch(
 ): Promise<void> {
   await run(
     `update node_sources
-        set last_fetched_at = now(), last_error = $2, node_count = $3, refresh_requested_at = null
+        set last_fetched_at = now(), last_error = $2, node_count = $3
       where id = $1`,
     [id, result.error, result.nodeCount],
   )
-}
-
-/**
- * 网页上点了「立即刷新」。
- *
- * 只打时间戳，不发网络请求：取订阅的一直是设备上的 Agent，链接和 token 不离开服务端，
- * 但服务端也不该替设备去访问——服务端在机房里，跟用户平时走的那条路不一样，
- * 有些订阅站只对客户端放行。Agent 下一轮 bootstrap 看到这个标记就去刷新。
- */
-export async function requestSourceRefresh(id: string): Promise<void> {
-  await run('update node_sources set refresh_requested_at = now() where id = $1', [id])
 }
 
 /**
@@ -196,8 +187,44 @@ export async function deleteSource(id: string): Promise<void> {
 
 // ---------------------------------------------------------------- 节点
 
+/**
+ * 节点池：停用的订阅带来的节点不算在里面。
+ *
+ * 订阅上的开关靠这里起作用——关掉之后，它的节点不出现在节点页、分组候选、
+ * 设备配置和 singweb 订阅链接里。行还留在库里，重新打开不用再拉一遍。
+ */
 export function listNodeRows(): Promise<NodeRow[]> {
-  return many<NodeRow>('select * from nodes order by tag')
+  return many<NodeRow>(
+    `select n.* from nodes n
+       left join node_sources s on s.id = n.source_id
+      where n.source_id is null or s.enabled
+      order by n.tag, n.id`,
+  )
+}
+
+/**
+ * 库里的全部节点，包括停用订阅的。校验分组时用它：逐个挑选的候选里有停用订阅的节点
+ * 不该报错——订阅只是暂时关了，打开之后这些节点还会回来。
+ */
+export function listAllNodeRows(): Promise<NodeRow[]> {
+  // tag 可能重名（不同订阅里同名的节点），加上 id 让顺序每次都一样
+  return many<NodeRow>('select * from nodes order by tag, id')
+}
+
+/** 节点在不在节点池里，也就是它所在的订阅有没有停用 */
+export async function inPool(id: string): Promise<boolean> {
+  const row = await one<{ id: string }>(
+    `select n.id from nodes n
+       left join node_sources s on s.id = n.source_id
+      where n.id = $1 and (n.source_id is null or s.enabled)`,
+    [id],
+  )
+  return row !== null
+}
+
+export async function nodeIdsOfSource(sourceId: string): Promise<string[]> {
+  const rows = await many<{ id: string }>('select id from nodes where source_id = $1', [sourceId])
+  return rows.map((r) => r.id)
 }
 
 export async function findNodeRow(id: string): Promise<NodeRow | null> {
@@ -245,21 +272,48 @@ export async function deleteNodes(ids: string[]): Promise<void> {
 }
 
 /**
- * 把一批订阅节点写进库：按 (source_id, identity) 合并，存在的更新，
- * 不存在的插入，这次没出现的从库里删掉（订阅里已经移除了）。
+ * 把一个订阅拉到的节点写进节点池：按 identity 合并，存在的更新，不存在的插入，
+ * 这次没出现的删掉（订阅里已经移除了）。
  *
- * 返回这次写入后的全部节点，调用方拿它去判断哪些节点不该再被分组引用。
+ * 节点池是所有订阅合在一起的，所以这里还要做两件事：
+ * - 去重。同一个节点出现在两个订阅里（同一家机场的两条链接很常见）只留一份，
+ *   归先拉到它的订阅。原来那个订阅停用了的话，由这个订阅接手。
+ * - tag 在整个池子里唯一。不同订阅常有同名节点（「香港 01」），重名的加序号，
+ *   不然节点页、设备页上分不清是哪个。
+ *
+ * 返回这个订阅名下的节点数，和因为跟别的订阅重复而没有收进来的个数。
  */
 export async function syncSourceNodes(
   sourceId: string,
   source: string,
-  nodes: Array<Omit<ReportedNode, 'identity'> & { identity: string }>,
-): Promise<NodeRow[]> {
-  const keep: string[] = []
+  nodes: PoolNode[],
+): Promise<{ owned: number; duplicates: number }> {
+  const kept = new Set<string>()
+  let duplicates = 0
+  let removed: string[] = []
   await tx(async (client) => {
+    // 别的订阅（启用中的）已经占下的节点和 tag
+    const others = await client.query<{ id: string; tag: string }>(
+      `select n.id, n.tag from nodes n
+         left join node_sources s on s.id = n.source_id
+        where n.source_id is distinct from $1 and (n.source_id is null or s.enabled)`,
+      [sourceId],
+    )
+    const taken = new Set(others.rows.map((r) => r.id))
+    const usedTags = new Set(others.rows.map((r) => r.tag))
+
     for (const node of nodes) {
+      // id 只由 identity 决定，两个订阅里的同一个节点会算出同一个 id
       const id = nodeIdFor(sourceId, node.identity)
-      keep.push(id)
+      if (kept.has(id)) continue
+      if (taken.has(id)) {
+        duplicates++
+        continue
+      }
+      kept.add(id)
+      let tag = node.tag
+      for (let i = 2; usedTags.has(tag); i++) tag = `${node.tag} ${i}`
+      usedTags.add(tag)
       await client.query(
         `insert into nodes (id, tag, protocol, server, port, region, enabled, source, outbound, source_id, identity, updated_at)
          values ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, now())
@@ -271,85 +325,35 @@ export async function syncSourceNodes(
            region = excluded.region,
            source = excluded.source,
            outbound = excluded.outbound,
+           source_id = excluded.source_id,
+           identity = excluded.identity,
            updated_at = now()`,
         [
           id,
-          node.tag,
+          tag,
           node.protocol,
           node.server,
           node.port,
           node.region,
           source,
-          JSON.stringify(node.outbound),
+          JSON.stringify({ ...node.outbound, tag }),
           sourceId,
           node.identity,
         ],
       )
     }
     // 订阅里已经没有的节点
-    if (keep.length) {
-      await client.query('delete from nodes where source_id = $1 and not (id = any($2))', [
-        sourceId,
-        keep,
-      ])
-    } else {
-      await client.query('delete from nodes where source_id = $1', [sourceId])
-    }
+    const gone = await client.query<{ id: string }>(
+      'delete from nodes where source_id = $1 and not (id = any($2)) returning id',
+      [sourceId, [...kept]],
+    )
+    removed = gone.rows.map((r) => r.id)
   })
-  return many<NodeRow>('select * from nodes where source_id = $1 order by tag', [sourceId])
-}
-
-/**
- * Agent 上报的节点。这些是设备本机 sing-box 配置里的节点，按 tag 认。
- * tag 撞上了就更新，不删——设备不在线时不该把它的节点清掉。
- *
- * 认行要看 identity，不能只看 tag：Agent 每一轮上报都会把服务端发给它的整份节点列表
- * 原样送回来，里面有订阅来的也有本机配置的。按 tag 认的话，订阅那 20 个节点要么每轮
- * 再新建一份，要么把订阅那份覆盖掉，节点数会翻倍。
- *
- * 同一条 identity 落到了两行上时，优先认有 source_id 的那一行——订阅来的那份是权威的，
- * 影子行不该反客为主。
- */
-export async function upsertReportedNodes(nodes: ReportedNode[]): Promise<void> {
-  if (!nodes.length) return
-  await tx(async (client) => {
-    for (const node of nodes) {
-      const identity = node.identity ?? ''
-      const existing = identity
-        ? await client.query<{ id: string }>(
-            `select id from nodes where identity = $1
-             order by (source_id is null), id limit 1`,
-            [identity],
-          )
-        : await client.query<{ id: string }>('select id from nodes where tag = $1 limit 1', [
-            node.tag,
-          ])
-      const id = existing.rows[0]?.id ?? newId('node')
-      await client.query(
-        `insert into nodes (id, tag, protocol, server, port, region, enabled, source, outbound, identity, updated_at)
-         values ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, now())
-         on conflict (id) do update set
-           tag = excluded.tag,
-           protocol = excluded.protocol,
-           server = excluded.server,
-           port = excluded.port,
-           region = excluded.region,
-           outbound = excluded.outbound,
-           updated_at = now()`,
-        [
-          id,
-          node.tag,
-          node.protocol,
-          node.server,
-          node.port,
-          node.region,
-          '本机配置',
-          JSON.stringify(node.outbound),
-          node.identity ?? '',
-        ],
-      )
-    }
-  })
+  if (removed.length) {
+    await clearDanglingRefs(removed)
+    await dropProbesOfNodes(removed)
+  }
+  return { owned: kept.size, duplicates }
 }
 
 // ---------------------------------------------------------------- 探测目标
@@ -543,13 +547,28 @@ export async function upsertDevice(row: {
   clashApi?: string
   probeInbound?: string
   dataDir?: string
+  /**
+   * 本机代理的监听地址。空字符串是"现在没有"（sing-box 没起来、端口被占），
+   * 要能把旧值清掉；undefined 才表示没上报（旧版 Agent 没有这个字段），保留原值。
+   */
+  proxyListen?: string
+  /**
+   * 设备密钥。只有注册时才传：上报走的是已经认证过的身份，
+   * 不能让一次上报顺手把密钥换掉——那等于谁拿到一次密钥就能把设备抢走。
+   */
   secret?: string
+  /**
+   * 本机 sing-box 现在的错误。null 是"没问题"，undefined 是"没上报"，保留原值。
+   */
+  singboxError?: string | null
 }): Promise<{ before: DeviceRow | null; after: DeviceRow }> {
   const before = await findDeviceRow(row.id)
   await run(
     `insert into devices (id, name, hostname, platform, os_version, agent_version, singbox_version,
-                          clash_api, probe_inbound, data_dir, secret, last_seen_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+                          clash_api, probe_inbound, data_dir, proxy_listen, secret, singbox_error,
+                          last_seen_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, coalesce($11::text, ''), $12,
+             case when $13::boolean then $14::text else null end, now())
      on conflict (id) do update set
        name = excluded.name,
        hostname = excluded.hostname,
@@ -560,7 +579,10 @@ export async function upsertDevice(row: {
        clash_api = coalesce(nullif(excluded.clash_api, ''), devices.clash_api),
        probe_inbound = coalesce(nullif(excluded.probe_inbound, ''), devices.probe_inbound),
        data_dir = coalesce(nullif(excluded.data_dir, ''), devices.data_dir),
+       proxy_listen = coalesce($11::text, devices.proxy_listen),
        secret = coalesce(nullif(excluded.secret, ''), devices.secret),
+       singbox_error = case when $13::boolean then $14::text else devices.singbox_error end,
+       offline_noted = false,
        last_seen_at = now()`,
     [
       row.id,
@@ -573,7 +595,12 @@ export async function upsertDevice(row: {
       row.clashApi ?? '',
       row.probeInbound ?? '',
       row.dataDir ?? '',
+      // null 表示没上报：insert 时落成空字符串（列是 not null），冲突时保留原值
+      row.proxyListen === undefined ? null : row.proxyListen,
       row.secret ?? '',
+      // 第 13 个参数区分"上报了 null（没问题）"和"没上报"，两者在 SQL 里都是 null
+      row.singboxError !== undefined,
+      row.singboxError ?? null,
     ],
   )
   const after = await findDeviceRow(row.id)
@@ -581,7 +608,6 @@ export async function upsertDevice(row: {
   return { before, after }
 }
 
-/** 只刷新在线时间，不覆盖其他字段 */
 /**
  * 按设备密钥找设备。密钥是注册时发下去的原文，
  * Agent 每次上报都用它做身份，所以这里不能存散列——服务端要能反查。
@@ -590,9 +616,26 @@ export function findDeviceBySecret(secret: string): Promise<DeviceRow | null> {
   return one<DeviceRow>('select * from devices where secret = $1', [secret])
 }
 
+/** 只刷新在线时间，不覆盖其他字段 */
 export async function touchDevice(id: string): Promise<DeviceRow | null> {
-  await run('update devices set last_seen_at = now() where id = $1', [id])
+  await run('update devices set last_seen_at = now(), offline_noted = false where id = $1', [id])
   return findDeviceRow(id)
+}
+
+/**
+ * 把超时没上报、还没记过离线的设备标成已离线，返回这一批。
+ *
+ * 一条 update … returning 做完：多个实例同时扫的时候，每台设备只会被其中一个领走，
+ * 离线事件不会记两遍。
+ */
+export function markOfflineDevices(afterMs: number): Promise<DeviceRow[]> {
+  return many<DeviceRow>(
+    `update devices set offline_noted = true
+      where not offline_noted
+        and last_seen_at < now() - make_interval(secs => $1::double precision)
+      returning *`,
+    [afterMs / 1000],
+  )
 }
 
 export async function setDeviceNote(id: string, note: string | null): Promise<DeviceRow | null> {
@@ -657,27 +700,22 @@ export async function saveRuntime(deviceId: string, r: ReportedRuntime): Promise
   )
 }
 
-/** 服务端自己改固定节点时用 */
+/**
+ * 服务端自己改固定节点时用。
+ *
+ * 设备可能还没上报过这个分组（分组刚建好），这时库里没有这一行。
+ * 只写 update 的话固定会悄悄丢掉：Agent 执行完待办，下一轮从 bootstrap
+ * 拿到的固定表里没有它，又自己选回去了。所以没有就插一行。
+ */
 export async function setRuntimePin(
   deviceId: string,
   groupId: string,
   nodeId: string | null,
 ): Promise<void> {
   await run(
-    `update group_runtime set pinned_node_id = $3, reported_at = now()
-      where device_id = $1 and group_id = $2`,
-    [deviceId, groupId, nodeId],
-  )
-}
-
-/** 让设备重新跑一轮探测 */
-export async function setRuntimeActive(
-  deviceId: string,
-  groupId: string,
-  nodeId: string | null,
-): Promise<void> {
-  await run(
-    'update group_runtime set active_node_id = $3, reported_at = now() where device_id = $1 and group_id = $2',
+    `insert into group_runtime (device_id, group_id, pinned_node_id)
+     values ($1, $2, $3)
+     on conflict (device_id, group_id) do update set pinned_node_id = excluded.pinned_node_id`,
     [deviceId, groupId, nodeId],
   )
 }
@@ -755,16 +793,22 @@ export async function saveProbe(
      values ($1, $2, $3, $4, $5, now())
      on conflict (device_id, node_id, target_id) do update set
        last = excluded.last,
-       history = (
-         select coalesce(jsonb_agg(item order by idx), '[]'::jsonb)
-           from (
-             select item, idx
-               from jsonb_array_elements(probes.history || excluded.history)
-                 with ordinality as t(item, idx)
-              order by idx desc
-              limit $6
-           ) as recent
-       ),
+       history = case
+         -- Agent 每次上报都带着最近一次探测，而探测比上报稀得多：
+         -- 同一次探测会被连着报好几回，只有探测时间变了才是新的一条
+         when probes.history @> jsonb_build_array(jsonb_build_object('at', $4::jsonb -> 'at'))
+           then probes.history
+         else (
+           select coalesce(jsonb_agg(item order by idx), '[]'::jsonb)
+             from (
+               select item, idx
+                 from jsonb_array_elements(probes.history || excluded.history)
+                   with ordinality as t(item, idx)
+                order by idx desc
+                limit $6
+             ) as recent
+         )
+       end,
        updated_at = now()`,
     [
       deviceId,
@@ -1045,6 +1089,84 @@ export async function clearDanglingRefs(nodeIds: string[]): Promise<void> {
       [nodeIds],
     )
   })
+}
+
+// ---------------------------------------------------------------- 设置
+
+export async function getSetting(key: string): Promise<string | null> {
+  const row = await one<{ value: string }>('select value from settings where key = $1', [key])
+  return row?.value ?? null
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  await run(
+    `insert into settings (key, value, updated_at) values ($1, $2, now())
+     on conflict (key) do update set value = excluded.value, updated_at = now()`,
+    [key, value],
+  )
+}
+
+/**
+ * 只在没有的时候写一次。种子数据用：用户删掉默认分组之后重启服务，不该再冒出来一个。
+ */
+export async function ensureSetting(key: string, value: string): Promise<boolean> {
+  const result = await run(
+    'insert into settings (key, value) values ($1, $2) on conflict (key) do nothing',
+    [key, value],
+  )
+  return result > 0
+}
+
+// ---------------------------------------------------------------- 设备接入令牌
+
+/** 接入命令里那个令牌的有效期，够用户复制粘贴到另一台机器上跑 */
+const ENROLL_TTL_MS = 30 * 60 * 1000
+
+/** 生成一个设备接入令牌。库里只留散列，原文发给网页一次，之后再也读不出来 */
+export async function createEnrollToken(
+  userId: string | null,
+  ttlMs = ENROLL_TTL_MS,
+): Promise<{ id: string; token: string; expiresAt: Date }> {
+  const id = newId('enr')
+  const token = randomBytes(24).toString('hex')
+  const expiresAt = new Date(Date.now() + ttlMs)
+  await tx(async (client) => {
+    // 过期一天以上的顺手清掉，免得表越攒越大。刚用掉的留着：
+    // 设备页可能还开在后台，回到前台时要能查到「已接入」，而不是「已失效」
+    await client.query("delete from enroll_tokens where expires_at <= now() - interval '1 day'")
+    await client.query(
+      'insert into enroll_tokens (id, token_hash, created_by, expires_at) values ($1, $2, $3, $4)',
+      [id, tokenHash(token), userId, expiresAt],
+    )
+  })
+  return { id, token, expiresAt }
+}
+
+/**
+ * 用令牌换设备身份。原子的一条 update：两个 Agent 同时拿着同一个令牌注册时，
+ * 只有一个能拿到行，另一个当作令牌无效。
+ */
+export async function consumeEnrollToken(token: string, deviceId: string): Promise<EnrollTokenRow | null> {
+  return one<EnrollTokenRow>(
+    `update enroll_tokens
+        set used_at = now(), device_id = $2
+      where token_hash = $1 and used_at is null and expires_at > now()
+      returning *`,
+    [tokenHash(token), deviceId],
+  )
+}
+
+/** 令牌现在还能不能用来接入。只看不用，安装脚本据此提前报错，省得白下一遍 Node 和 sing-box */
+export async function enrollTokenUsable(token: string): Promise<boolean> {
+  const row = await one<{ id: string }>(
+    'select id from enroll_tokens where token_hash = $1 and used_at is null and expires_at > now()',
+    [tokenHash(token)],
+  )
+  return row !== null
+}
+
+export async function findEnrollToken(id: string): Promise<EnrollTokenRow | null> {
+  return one<EnrollTokenRow>('select * from enroll_tokens where id = $1', [id])
 }
 
 export { toDevice, toGroup, toNodeSource, toStoredNode, toTarget }

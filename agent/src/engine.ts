@@ -1,8 +1,13 @@
 /**
- * 主循环。一轮办四件事：拉订阅、跑一轮探测、执行服务端发下来的操作、上报。
+ * 主循环。一轮办五件事：拿服务端归一化好的节点和分组、生成配置交给 sing-box、
+ * 跑一轮探测、把结论落到 selector 上、上报。
  *
- * 顺序有讲究：订阅先拉（节点集合变了，候选跟着变），再探测（拿到这一轮的结论），
- * 再执行待办（切换要在上报之前生效），最后上报。
+ * 顺序有讲究：配置先生效（探测进程和 selector 都依赖它），再探测（拿到这一轮的结论），
+ * 再执行网页上排下来的待办（固定节点要先记下来，下结论时才会尊重它），
+ * 然后下结论、落到 selector 上，最后上报。
+ *
+ * 订阅不经过这里：上游有几个订阅、链接是什么，设备一概不知道。节点池由服务端自己
+ * 拉取和归一化，设备只拿归一化之后的结果。
  *
  * 上报本身就是轮询——服务端把待办塞在响应里带回来，所以它不需要能连到这台机器。
  * 设备在内网、没有公网地址也能管。
@@ -19,32 +24,50 @@ import type {
   SwitchRecord,
   Target,
 } from '../../shared/types.ts'
+import { DIRECT } from '../../shared/types.ts'
 import { candidateIds } from '../../shared/candidates.ts'
+import { blockRuleSetTag, buildConfig } from '../../shared/singbox.ts'
+import type { BuiltConfig } from '../../shared/singbox.ts'
 import { probeTarget, type ProbeContext } from './probe.ts'
-import { applyRound, pickActive, type NodeOpinion } from './health.ts'
+import { applyRound, chooseActive, type NodeOpinion, type Outpaced } from './health.ts'
 import { openProbeRuntime, type ProbeRuntime } from './runtime.ts'
-import { parseSubscriptionBody, toReportedNode, type PendingSwitch, type SourceRef } from './client.ts'
+import type { ClashSelector } from './singbox.ts'
+import type { PendingSwitch } from './client.ts'
+import { AGENT_VERSION } from './client.ts'
 import type { Reporter } from './reporter.ts'
-import { ClashApi } from './singbox.ts'
+import type { Supervisor } from './supervisor.ts'
 import type { AgentState } from './config.ts'
 
 /** 一轮探测最多同时开这么多连接，避免把本机端口用完 */
 const PROBE_CONCURRENCY = 8
 const PROBE_HISTORY_MAX = 40
 
-/** 订阅内容多久重新取一次。没拉过和用户点了刷新的不受这个限制 */
-const SOURCE_REFRESH_MS = 6 * 60 * 60 * 1000
-/** 拉失败的订阅多久后重试 */
-const SOURCE_RETRY_MS = 5 * 60 * 1000
-
-/** 一个分组在本机的运行状态，只活在内存里，重启后重新探测 */
+/**
+ * 一个分组在本机的运行状态，只活在内存里，重启后重新探测。
+ *
+ * decided 是这个 Agent 算出来的结论，undefined 表示还没下结论（候选全都还没测过）。
+ * 设备上真正在用的是 selector 里的值，两者可能对不上（切换失败、程序重启过），
+ * 所以上报的出口以 selector 为准。
+ */
 interface GroupState {
   healths: Map<string, NodeHealth>
-  activeNodeId: string | null
-  /** 用户在网页上固定下来的节点。有值时自动切换让位，一直用这个 */
-  pinnedNodeId: string | null
+  decided: string | null | undefined
+  /** 当前节点连续被比下去的记录，见 health.ts 的 SWITCH_ROUNDS */
+  outpaced: Outpaced | null
+  /** 设备上实际在用的出口；null 表示已阻断或还没读到 */
+  active: string | null
+  allFail: boolean
+  /**
+   * 下一次出口变化是因为什么：全部不可用改走直连、或者从全部不可用里恢复。
+   * 结论是在 decide 里下的，出口真正变了是在 reconcile 里，原因得这样带过去，
+   * 不然直连会被记成一次普通切换、恢复会被记成别人改的。
+   */
+  cause: 'all-down' | 'recovered' | null
+  /** 读到过一次 selector 了没有。第一次读到的是启动前就在的状态，不算切换 */
+  synced: boolean
   lastRoundAt: string | null
   lastSwitch: SwitchRecord | null
+  nextProbeAt: number
 }
 
 export class Engine {
@@ -56,16 +79,24 @@ export class Engine {
   private nodes: StoredNode[] = []
   private events: AppEvent[] = []
   private runtime: ProbeRuntime | null = null
-  private readonly clash: ClashApi
+  private runtimeKey = ''
+  private readonly pins = new Map<string, string>()
+  /** 这一轮要阻断的规则集 tag */
+  private blocking = new Set<string>()
+  private forceProbe = false
   private stopped = false
+  private readonly wake = new Wake()
+  /** 同一个生成问题只提示一次，别每轮刷屏 */
+  private readonly warned = new Set<string>()
 
   private readonly state: AgentState
   private readonly reporter: Reporter
+  private readonly supervisor: Supervisor
 
-  constructor(state: AgentState, reporter: Reporter) {
+  constructor(state: AgentState, reporter: Reporter, supervisor: Supervisor) {
     this.state = state
     this.reporter = reporter
-    this.clash = new ClashApi(state.clashApi, state.clashSecret)
+    this.supervisor = supervisor
   }
 
   /** 跑起来就一直循环，直到 stop() */
@@ -78,48 +109,91 @@ export class Engine {
       } catch (err) {
         console.error('这一轮出错了，等会儿重试：', err instanceof Error ? err.message : err)
       }
-      await sleep(Math.max(5, intervalSec) * 1000)
+      await this.wake.wait(Math.max(5, intervalSec) * 1000)
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true
-    this.runtime?.stop()
+    this.wake.stop()
+    const runtime = this.runtime
+    this.runtime = null
+    this.runtimeKey = ''
+    await runtime?.stop()
   }
 
   /** 一轮，返回下一轮隔多久 */
   private async cycle(): Promise<number> {
     const snapshot = await this.reporter.bootstrap()
     this.nodes = snapshot.nodes
-    this.applyGroups(snapshot.groups)
-    this.applyPins(snapshot.pins)
+    this.syncGroups(snapshot.groups)
+    this.syncPins(snapshot.pins)
 
-    await this.syncSources(snapshot.sources)
-    await this.ensureRuntime()
-    await this.probeAll(snapshot.groups, snapshot.targets)
-    await this.applyPending(snapshot.pending)
+    const built = this.build(snapshot.groups)
+    await this.supervisor.apply(built, this.blocking)
+    // 手动探测：这一轮所有该探的都重探一次
+    if (snapshot.pending.some((item) => item.reason === 'manual-probe')) this.forceProbe = true
+    await this.ensureRuntime(built, snapshot.groups)
+    await this.probeAll(snapshot.groups, snapshot.targets, built)
+    // 固定节点先落下来：decide 要知道它，否则会先按探测结果切一次、再被固定切回去
+    await this.applyPending(snapshot.pending, built)
+
+    this.blocking = new Set<string>()
+    for (const group of snapshot.groups) this.decide(group, built)
+    await this.supervisor.setBlocking(this.blocking)
 
     // 切换执行完了再读 selector 成员，这样上报的是这一轮切换之后的结果
-    const members = await this.selectorMembersOf(snapshot.groups)
+    const members = await this.reconcile(snapshot.groups, built)
+    this.pruneProbes(snapshot.groups)
+
     const answer = await this.reporter.report(this.buildReport(snapshot.groups, members))
     // 事件交上去就不必再留，下一轮重新攒
     this.events = []
+    this.forceProbe = false
     return answer.reportIntervalSec
   }
 
+  /** 生成本机代理的配置。managed 一给，自动分组就是 selector，Agent 才切得动 */
+  private build(groups: Group[]): BuiltConfig {
+    const built = buildConfig({
+      nodes: this.nodes,
+      groups,
+      listen: this.state.proxyListen,
+      managed: {
+        clashApi: this.state.clashApi,
+        clashSecret: this.state.clashSecret,
+        dataDir: this.state.dataDir,
+      },
+    })
+    this.noteWarnings(built.warnings)
+    return built
+  }
+
+  private noteWarnings(warnings: string[]): void {
+    for (const warning of warnings) {
+      if (this.warned.has(warning)) continue
+      this.warned.add(warning)
+      console.error(`配置提醒：${warning}`)
+    }
+  }
+
   /** 分组增删时同步本地状态；消失的分组状态一并丢掉 */
-  private applyGroups(groups: Group[]): void {
+  private syncGroups(groups: Group[]): void {
     const seen = new Set(groups.map((g) => g.id))
     for (const group of groups) {
-      if (!this.groups.has(group.id)) {
-        this.groups.set(group.id, {
-          healths: new Map(),
-          activeNodeId: null,
-          pinnedNodeId: null,
-          lastRoundAt: null,
-          lastSwitch: null,
-        })
-      }
+      if (this.groups.has(group.id)) continue
+      this.groups.set(group.id, {
+        healths: new Map(),
+        decided: undefined,
+        outpaced: null,
+        active: null,
+        allFail: false,
+        cause: null,
+        synced: false,
+        lastRoundAt: null,
+        lastSwitch: null,
+        nextProbeAt: 0,
+      })
     }
     for (const id of [...this.groups.keys()]) {
       if (!seen.has(id)) this.groups.delete(id)
@@ -130,102 +204,374 @@ export class Engine {
    * 对齐网页上的固定节点。
    *
    * 每次都整份覆盖：用户取消固定后 pins 里就没有这一项了，只做增量的写法
-   * 会让取消不生效。固定的节点也不校验是否存在——列表里没有它时下一轮
-   * probeAll 也不会选它，界面照样显示得出来。
+   * 会让取消不生效。
    */
-  private applyPins(pins: Record<string, string>): void {
-    for (const [groupId, state] of this.groups) {
-      state.pinnedNodeId = pins[groupId] ?? null
+  private syncPins(pins: Record<string, string>): void {
+    this.pins.clear()
+    for (const [groupId, nodeId] of Object.entries(pins)) this.pins.set(groupId, nodeId)
+  }
+
+  /**
+   * 决定每个分组该走哪个节点，只改内存里的结论，不碰 sing-box。
+   *
+   * 手动分组不探测：出口就是固定的那个节点，没有就取第一个启用的候选。
+   * 自动分组按健康度和策略挑；一个可用的都没有时按「全部节点都不可用时」处理。
+   * 候选全都还没测出结论（unknown）时不下结论，出口保持不动——
+   * 刚启动就切一次是没有意义的。
+   *
+   * 阻断要每轮都重新加进 this.blocking：这个集合每轮清空重算，漏一轮规则集就会被清掉，
+   * 阻断就悄悄失效了。
+   */
+  private decide(group: Group, built: BuiltConfig): void {
+    const state = this.groups.get(group.id)
+    if (!state) return
+    // 原因只管这一轮：上一轮没用上的（比如切换失败了）不能留到以后的某次切换上
+    state.cause = null
+    if (!this.selectorTagSet(built).has(group.selectorTag)) return
+
+    // 停用的节点不在配置里，切过去必然失败
+    const enabled = candidateIds(group, this.nodes).filter((id) => built.tagOf.has(id))
+    const pin = this.pins.get(group.id) ?? null
+    const pinned = pin !== null && enabled.includes(pin)
+
+    if (group.selection === 'manual') {
+      state.decided = pinned ? pin : (enabled[0] ?? null)
+      state.outpaced = null
+      state.allFail = false
+      return
     }
+
+    // 固定节点是用户直接指定的，不进选节点的流程，攒的轮数跟着作废
+    if (pinned) {
+      if (state.allFail) state.cause = 'recovered'
+      state.decided = pin
+      state.outpaced = null
+      state.allFail = false
+      return
+    }
+
+    const choice = chooseActive(group, state.healths, enabled, state.decided ?? null, state.outpaced, state.lastRoundAt)
+    state.outpaced = choice.outpaced
+    const pick = choice.pick
+    if (pick) {
+      if (state.allFail) state.cause = 'recovered'
+      state.decided = pick
+      state.allFail = false
+      return
+    }
+
+    // 一个可用的都没有，没什么可比的
+    state.outpaced = null
+
+    // 没有可用的节点：候选还没测过就再等等，别急着切。
+    // 已经在阻断的继续阻断——新加进来的节点还没测出结论，不能因此把阻断撤掉。
+    if (enabled.some((id) => (state.healths.get(id)?.state ?? 'unknown') === 'unknown')) {
+      if (state.allFail && group.onAllFail === 'block') this.blocking.add(blockRuleSetTag(group))
+      return
+    }
+
+    const first = !state.allFail
+    state.allFail = true
+
+    if (group.onAllFail === 'block') {
+      // 阻断靠规则集，selector 指着谁都拦得住，不用去动它
+      this.blocking.add(blockRuleSetTag(group))
+      state.decided = null
+      state.outpaced = null
+      if (first) {
+        // 刚启动时还没读过 selector，不知道之前走的是谁，就不记切换了
+        if (state.active !== null) {
+          state.lastSwitch = {
+            at: new Date().toISOString(),
+            from: state.active,
+            to: null,
+            reason: '节点全都不可用，已阻断',
+          }
+        }
+        this.events.push(
+          this.event(group, 'all-down', 'warn', {
+            from: state.active,
+            to: null,
+            message: `「${group.name}」的节点全都不可用，已阻断这个分组的新连接（不会走直连）`,
+          }),
+        )
+        state.active = null
+      }
+      return
+    }
+
+    if (group.onAllFail === 'direct') {
+      // 事件等 selector 真的切到直连再记，切失败的话这里记了就是假的。
+      // 每轮都带上原因：这一轮没切成，下一轮重试时还得知道是为什么
+      state.cause = 'all-down'
+      state.decided = DIRECT
+      return
+    }
+
+    // 保持当前节点：出口不变，不记切换。事件留到 reconcile 读到 selector 再发——
+    // 刚启动时还不知道设备上指着谁，这里写的名字会是错的。
+    // 还没读到过 selector（sing-box 没起来）就每轮都带上，读到的那一轮再说
+    if (first || !state.synced) state.cause = 'all-down'
+  }
+
+  /**
+   * 把结论落到设备上：读 selector 现在指谁，跟结论不一样就切，再把实际结果记下来。
+   *
+   * 出口以 selector 为准。切换失败、sing-box 刚重启（cache_file 会恢复上一次的选择）、
+   * 有人在别处改过，这些情况下设备上的值都可能跟结论对不上。
+   */
+  private async reconcile(
+    groups: Group[],
+    built: BuiltConfig,
+  ): Promise<Map<string, string[] | null>> {
+    const members = new Map<string, string[] | null>()
+    const selectorTags = this.selectorTagSet(built)
+    const idOfTag = invert(built.tagOf)
+
+    const entries = await runLimited(
+      groups.map((group) => async () => {
+        const state = this.groups.get(group.id)
+        if (!state) return [group.id, null] as const
+        // 没生成 selector 的分组（没有可用的候选、tag 重名），它的流量直接被拒绝
+        if (!selectorTags.has(group.selectorTag)) {
+          state.active = null
+          return [group.id, null] as const
+        }
+        // sing-box 没起来时问不到，什么都不改，等它起来
+        if (!this.supervisor.running) return [group.id, null] as const
+
+        let selector: ClashSelector | null = null
+        try {
+          selector = await this.supervisor.clash.getSelector(group.selectorTag)
+        } catch (err) {
+          console.error(
+            `读取「${group.name}」的 selector 失败：`,
+            err instanceof Error ? err.message : String(err),
+          )
+        }
+        // 读不到就什么都不改，别因为一次读取失败报一次假的切换
+        if (!selector) return [group.id, null] as const
+
+        const ids = selector.all.map((tag) => (tag === DIRECT ? DIRECT : idOfTag.get(tag) ?? tag))
+        const observed = selector.now === DIRECT ? DIRECT : idOfTag.get(selector.now) ?? null
+
+        if (this.blocking.has(blockRuleSetTag(group))) {
+          state.active = null
+          state.synced = true
+          return [group.id, ids] as const
+        }
+
+        // 第一次读到之前，本机还没有结论（decided 是 undefined）。把设备上实际在用的
+        // 那个当成本机的结论，而不是拿它跟空的结论比：Agent 重启、sing-box 重启
+        // （cache_file 会恢复上一次的选择）之后都该接着用现在这个，
+        // 至于它还合不合适，交给下一轮 decide 按健康度判断。
+        if (state.decided === undefined && observed !== null) state.decided = observed
+
+        const next = state.decided
+        let now = observed
+        let ours = false
+        if (next !== undefined && next !== null && next !== observed && (await this.select(group, next, built))) {
+          now = next
+          ours = true
+        }
+
+        const cause = state.cause
+        state.cause = null
+        // 第一次读到之前不知道设备上走的是谁，就拿读到的值当「之前」：
+        // 启动前就在的状态不算切换，但这一轮真的切了还是要记
+        const before = state.synced ? state.active : observed
+        state.synced = true
+        state.active = now
+
+        if (cause === 'all-down' && group.onAllFail === 'keep-last') {
+          // 「保持当前节点」：出口不动，说一声就行
+          this.events.push(
+            this.event(group, 'all-down', 'warn', {
+              nodeId: now,
+              from: now,
+              to: now,
+              message: now
+                ? `「${group.name}」的节点全都不可用，保持在 ${this.tagOf(now, built)} 上`
+                : `「${group.name}」的节点全都不可用，现在没有可用的出口`,
+            }),
+          )
+          if (now !== before) this.noteSwitch(group, state, before, now, ours, null, built)
+          return [group.id, ids] as const
+        }
+        if (now !== before) {
+          this.noteSwitch(group, state, before, now, ours, cause, built)
+        } else if (cause === 'recovered' && now !== null) {
+          // 「保持当前节点」的分组恢复时出口没变，不算切换，但要让人知道恢复了
+          this.events.push(
+            this.event(group, 'recovered', 'good', {
+              nodeId: now,
+              from: now,
+              to: now,
+              message: `「${group.name}」恢复了，继续走 ${this.tagOf(now, built)}`,
+            }),
+          )
+        }
+        return [group.id, ids] as const
+      }),
+      // 本机接口，开太多并发没意义，还容易打满 sing-box 的连接数
+      4,
+    )
+    for (const [id, list] of entries) members.set(id, list)
+    return members
+  }
+
+  /**
+   * 切一个分组的 selector，成功返回 true。
+   *
+   * 这里不改内存里的状态：切失败时下一轮还会算出同样的结论再试一次，
+   * 先改成"已切换"会让网页显示一个设备上并不成立的状态。
+   */
+  private async select(group: Group, next: string, built: BuiltConfig): Promise<boolean> {
+    const tag = next === DIRECT ? DIRECT : built.tagOf.get(next)
+    if (!tag) {
+      console.error(`「${group.name}」要切到的节点不在配置里（${next}），跳过。`)
+      return false
+    }
+    try {
+      await this.supervisor.clash.select(group.selectorTag, tag)
+      return true
+    } catch (err) {
+      console.error(
+        `切换「${group.name}」失败：`,
+        err instanceof Error ? err.message : String(err),
+      )
+      return false
+    }
+  }
+
+  /**
+   * 记一次设备上真实发生的出口变化：切换记录和事件都在这里，from/to 一律是节点 id。
+   *
+   * ours 表示这次是 Agent 自己切的；不是的话就是在设备上被改了（有人用别的面板切过、
+   * sing-box 重启后恢复了旧的选择），照实记成外部变化。
+   */
+  private noteSwitch(
+    group: Group,
+    state: GroupState,
+    from: string | null,
+    to: string | null,
+    ours: boolean,
+    cause: GroupState['cause'],
+    built: BuiltConfig,
+  ): void {
+    const name = to === null ? '（没有出口）' : this.tagOf(to, built)
+
+    let kind: AppEvent['kind'] = 'switch'
+    let severity: AppEvent['severity'] = 'info'
+    let message: string
+    let reason: string
+    if (cause === 'all-down' && to === DIRECT) {
+      kind = 'all-down'
+      severity = 'warn'
+      message = `「${group.name}」的节点全都不可用，流量改走直连`
+      reason = '节点全都不可用，改走直连'
+    } else if (cause === 'recovered') {
+      kind = 'recovered'
+      severity = 'good'
+      message = `「${group.name}」恢复了，改走 ${name}`
+      reason = '节点恢复了'
+    } else if (ours) {
+      message = `「${group.name}」改走 ${name}`
+      reason =
+        to !== null && this.pins.get(group.id) === to
+          ? '按手动选择切换'
+          : group.selection === 'manual'
+            ? '没有手动选择，用分组里第一个候选节点'
+            : '按分组规则自动切换'
+    } else {
+      message = `「${group.name}」在设备上被改成了 ${name}`
+      reason = '设备上的选择变了'
+    }
+
+    state.lastSwitch = { at: new Date().toISOString(), from, to, reason }
+    this.events.push(this.event(group, kind, severity, { nodeId: to, from, to, message }))
   }
 
   /** 探测进程的出站列表写死在配置里，节点集合变了就得重启它 */
-  private async ensureRuntime(): Promise<void> {
-    const wanted = this.nodes.filter((n) => n.enabled).map((n) => n.tag).join('\u0000')
-    if (this.runtime && this.runtimeTags === wanted) return
-    this.runtime?.stop()
-    // 先清干净再起：起不来时不能留下"已经迁到这个节点集合"的假象，
-    // 否则下一轮会以为已经就绪，再也不重试
-    this.runtime = null
-    this.runtimeTags = wanted
-    this.runtime = await openProbeRuntime({
-      state: this.state,
-      nodes: this.nodes,
-      onExit: (reason) => {
+  private async ensureRuntime(built: BuiltConfig, groups: Group[]): Promise<void> {
+    const wanted = autoCandidateIds(groups, this.nodes, built)
+    if (!wanted.length) {
+      if (this.runtime) {
+        const runtime = this.runtime
         this.runtime = null
-        this.runtimeTags = ''
-        console.error(`探测进程退出了（${reason}），下一轮重新拉起。`)
-      },
-    })
-    this.runtimeTags = wanted
-  }
-
-  private runtimeTags = ''
-
-  /**
-   * 逐个订阅去取。链接只在服务端，Agent 拿到的是完整的订阅地址。
-   *
-   * 不是每轮都拉：订阅内容基本不变，报间隔是 15 秒，每轮都拉等于对订阅站
-   * 每分钟四次请求，很多站会直接把 IP 封掉。没拉过的（force）或者用户在网页上
-   * 点了「立即刷新」（force）才去取，其余按自己的节奏。
-   */
-  private async syncSources(sources: SourceRef[]): Promise<void> {
-    const now = Date.now()
-    const wanted = sources.filter(
-      (s) => s.force || now - (this.sourceFetchedAt.get(s.id) ?? 0) >= SOURCE_REFRESH_MS,
-    )
-    // 这轮没打算拉的，先把时间戳留成上一轮的，下面按结果更新
-    for (const source of wanted) {
-      // 先记上时间再拉：拉的过程中又轮到下一轮循环的话，不会重复发起
-      this.sourceFetchedAt.set(source.id, now)
-      try {
-        const body = await this.reporter.fetchSource(source)
-        const nodes = parseSubscriptionBody(body)
-        await this.reporter.sourceResult(source.id, null, nodes.map(toReportedNode))
-      } catch (err) {
-        await this.reporter.sourceResult(
-          source.id,
-          err instanceof Error ? err.message : String(err),
-          [],
-        )
-        // 失败了早点重试，不然要等一整个周期才再试一次
-        this.sourceFetchedAt.set(source.id, now - SOURCE_REFRESH_MS + SOURCE_RETRY_MS)
+        this.runtimeKey = ''
+        await runtime.stop()
       }
+      return
+    }
+
+    const nodes = wanted
+      .map((id) => this.nodes.find((n) => n.id === id))
+      .filter((n): n is StoredNode => n !== undefined && n.enabled)
+    /*
+     * 出站集合写死在配置里，节点变了（增删、启停）就得重启探测进程。
+     *
+     * 键只取节点 id 和出站内容，不取整份配置：配置里有随机生成的 SOCKS 密码、
+     * 探测进程自己选的端口，每次算出来都不一样，拿它当键会每轮都重启一次。
+     */
+    const key = `${nodes.map((n) => n.id).join(',')}|${JSON.stringify(
+      nodes.map((n) => [n.id, n.outbound]),
+    )}`
+    if (this.runtime && this.runtimeKey === key) return
+
+    const previous = this.runtime
+    this.runtime = null
+    this.runtimeKey = ''
+    await previous?.stop()
+
+    try {
+      this.runtime = await openProbeRuntime({
+        state: this.state,
+        nodes,
+        onExit: (reason, output) => {
+          this.runtime = null
+          this.runtimeKey = ''
+          console.error(`探测进程退出了（${reason}），下一轮重新拉起。${output ? `它最后的输出：\n${output}` : ''}`)
+        },
+      })
+      this.runtimeKey = key
+    } catch (err) {
+      // 先清干净再等下轮重试：留着的话下一轮会以为已经就绪，再也不重试
+      this.runtimeKey = ''
+      console.error(`探测进程没能启动：${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
-  /** 每个订阅上一次去取的时间。只活在内存里，重启后重新拉一遍 */
-  private readonly sourceFetchedAt = new Map<string, number>()
-
   /**
    * 探测一轮。手动分组不探测——它的意义就是"我说用哪个就用哪个"。
+   *
+   * 探测进程不在（没起来、刚退出）时跳过，但不清空已有的健康状态：
+   * 那只是这一轮没测成，不代表节点坏了。
    */
-  private async probeAll(groups: Group[], targets: Target[]): Promise<void> {
-    const byId = new Map(targets.map((t) => [t.id, t]))
-    const at = new Date().toISOString()
+  private async probeAll(groups: Group[], targets: Target[], built: BuiltConfig): Promise<void> {
+    const runtime = this.runtime
+    const now = Date.now()
 
     for (const group of groups) {
       const state = this.groups.get(group.id)
-      if (!state) continue
-      if (group.selection === 'manual') {
-        // 出口就是固定或选中的那个节点，没有就取第一个启用的候选
-        const ids = candidateIds(group, this.nodes)
-        const usable = this.nodes.filter((n) => ids.includes(n.id) && n.enabled)
-        state.activeNodeId =
-          (state.activeNodeId && usable.some((n) => n.id === state.activeNodeId)
-            ? state.activeNodeId
-            : usable[0]?.id) ?? null
-        state.lastRoundAt = at
-        continue
-      }
+      if (!state || group.selection === 'manual') continue
+      const enabled = candidateIds(group, this.nodes).filter((id) => built.tagOf.has(id))
+      if (!enabled.length) continue
+      const due = this.forceProbe || !state.lastRoundAt || now >= state.nextProbeAt
+      if (!runtime || !due) continue
+      state.nextProbeAt = now + Math.max(5, group.probeIntervalSec) * 1000
 
-      const ids = candidateIds(group, this.nodes)
-      const live = this.nodes.filter((n) => ids.includes(n.id) && n.enabled)
+      const byId = new Map(targets.map((t) => [t.id, t]))
       const rules = group.targetIds
         .map((id) => byId.get(id))
         .filter((t): t is Target => t !== undefined)
+      if (!rules.length) continue
 
-      const opinions = await this.runProbes(group, live, rules)
+      const live = enabled
+        .map((id) => this.nodes.find((n) => n.id === id))
+        .filter((n): n is StoredNode => n !== undefined)
+      const at = new Date().toISOString()
+      const opinions = await this.runProbes(group, live, rules, runtime)
       const healths: NodeHealth[] = []
       for (const opinion of opinions) {
         const { health, changed } = applyRound(group, state.healths.get(opinion.nodeId), opinion, at)
@@ -234,64 +580,7 @@ export class Engine {
       }
       state.healths = new Map(healths.map((h) => [h.nodeId, h]))
       state.lastRoundAt = at
-
-      // 用户固定了节点就一直用它，探测照跑（界面要看健康度），但不拿结论去改出口。
-      // 固定节点不在候选里或已经被停用时当作没固定，否则出口会卡在一个不存在的节点上。
-      const pinned = state.pinnedNodeId && live.some((n) => n.id === state.pinnedNodeId)
-        ? state.pinnedNodeId
-        : null
-      // 规则跑完才轮到决定用哪个。pickActive 按优先级或延迟挑一个可用的，
-      // 一个都没有时返回 null——那就是"全部不可用"。
-      const next = pinned ?? pickActive(group, healths, ids)
-      await this.applyActive(group, state, next)
     }
-  }
-
-  /**
-   * 把这一轮的结论落到设备上。出口变了就调 Clash API 切 selector，
-   * 并记一条 switch 事件——网页上的出口显示和切换记录都靠它。
-   *
-   * 切失败不改内存状态：下一轮还会算出同样的结论再试一次，
-   * 内存里先改成"已切换"会让网页显示一个设备上并不成立的状态。
-   */
-  private async applyActive(
-    group: Group,
-    state: GroupState,
-    next: string | null,
-  ): Promise<void> {
-    if (next === state.activeNodeId) return
-
-    const from = state.activeNodeId
-    const to = next
-    if (to) {
-      try {
-        await this.clash.select(group.selectorTag, this.tagOf(to))
-      } catch (err) {
-        console.error(
-          `切换「${group.name}」到 ${this.tagOf(to)} 失败：`,
-          err instanceof Error ? err.message : String(err),
-        )
-        return
-      }
-    }
-
-    state.activeNodeId = to
-    state.lastSwitch = {
-      at: new Date().toISOString(),
-      from: from ? this.tagOf(from) : null,
-      to,
-      reason: to ? 'auto' : 'all-fail',
-    }
-    this.events.push(
-      this.event(group, to ? 'switch' : 'all-down', to ? 'info' : 'warn', {
-        nodeId: to,
-        from: from ? this.tagOf(from) : null,
-        to,
-        message: to
-          ? `「${group.name}」改走 ${this.tagOf(to)}`
-          : `「${group.name}」的节点全都不可用`,
-      }),
-    )
   }
 
   /** 一个节点一轮里要过完所有规则：全部通过或任意通过取决于分组设置 */
@@ -299,26 +588,15 @@ export class Engine {
     group: Group,
     nodes: ProxyNode[],
     rules: Target[],
+    runtime: ProbeRuntime,
   ): Promise<NodeOpinion[]> {
-    const runtime = this.runtime
-    if (!runtime) return []
-    if (!rules.length || !nodes.length) {
-      // 没有规则或没有候选：给每个候选一个"未知"的结论，不改变已有状态
-      return nodes.map((node) => ({
-        nodeId: node.id,
-        ok: true,
-        latencyMs: null,
-        failingTargetIds: [],
-      }))
-    }
-
     const tasks = nodes.map((node) => async (): Promise<NodeOpinion> => {
       const details: ProbeDetail[] = []
       const failing: string[] = []
 
       for (const target of rules) {
         const ctx: ProbeContext = {
-          ...runtime.endpointFor(node.tag),
+          ...runtime.endpointFor(node.id),
           host: hostOf(target),
           port: portOf(target),
           timeoutMs: target.timeoutMs,
@@ -329,8 +607,7 @@ export class Engine {
 
         const key = `${node.id}|${target.id}`
         this.latest.set(key, detail)
-        const sample = sampleOf(detail)
-        this.history.set(key, [...(this.history.get(key) ?? []), sample].slice(-PROBE_HISTORY_MAX))
+        this.history.set(key, [...(this.history.get(key) ?? []), sampleOf(detail)].slice(-PROBE_HISTORY_MAX))
       }
 
       const ok =
@@ -357,7 +634,7 @@ export class Engine {
     changed: 'up' | 'down',
     targets: Map<string, Target>,
   ): void {
-    const tag = this.tagOf(opinion.nodeId)
+    const tag = this.tagOf(opinion.nodeId, null)
     if (changed === 'up') {
       this.events.push(
         this.event(group, 'node-up', 'good', {
@@ -382,41 +659,71 @@ export class Engine {
    * 执行服务端排下来的操作。网页上点的「切换到这个节点」就是走这条路：
    * 写库、Agent 下一轮领回来、调 Clash API、然后 ack。
    */
-  private async applyPending(pending: PendingSwitch[]): Promise<void> {
+  private async applyPending(pending: PendingSwitch[], built: BuiltConfig): Promise<void> {
     if (!pending.length) return
     const acked: string[] = []
 
     for (const item of pending) {
-      const group = this.reporter.groupById(item.group_id)
       const state = this.groups.get(item.group_id)
-      if (!group || !state) {
+      if (item.group_id === '' || item.reason === 'manual-probe') {
+        // 手动探测已经在上面处理过了
+        acked.push(item.id)
+        continue
+      }
+      if (!state) {
         // 分组已经没了，这条待办没有意义
         acked.push(item.id)
         continue
       }
-      const tag = item.node_id ? this.tagOf(item.node_id) : null
+      const group = this.reporter.groupById(item.group_id)
+      if (!group) {
+        acked.push(item.id)
+        continue
+      }
+
       try {
-        if (tag) await this.clash.select(group.selectorTag, tag)
-        const record: SwitchRecord = {
-          at: new Date().toISOString(),
-          from: state.activeNodeId ? this.tagOf(state.activeNodeId) : null,
-          to: item.node_id,
-          reason: reasonText(item.reason),
+        const to = item.node_id
+        if (to) {
+          if (!this.supervisor.running) {
+            throw new Error(this.supervisor.error ?? 'sing-box 还没有启动')
+          }
+          if (!this.selectorTagSet(built).has(group.selectorTag)) {
+            throw new Error(`「${group.name}」在这台设备上没有可用的候选节点，没法切换`)
+          }
+          const tag = built.tagOf.get(to)
+          if (!tag || !candidateIds(group, this.nodes).includes(to)) {
+            throw new Error(`「${this.tagOf(to, built)}」不在这个分组的候选节点里，或者已经停用了`)
+          }
+          await this.supervisor.clash.select(group.selectorTag, tag)
+          this.pins.set(item.group_id, to)
+
+          // 还没读过 selector 时不知道之前走的是谁，切换记录就不写了，免得写出一个假的来处
+          const from = state.synced ? state.active : null
+          if (state.synced && from !== to) {
+            state.lastSwitch = { at: new Date().toISOString(), from, to, reason: reasonText(item.reason) }
+          }
+          // 固定的节点就是结论。从全部不可用里被手动救回来的，阻断也要跟着撤掉
+          state.decided = to
+          state.active = to
+          state.outpaced = null
+          state.allFail = false
+          state.synced = true
+          this.events.push(
+            this.event(group, 'pin', 'info', {
+              nodeId: to,
+              from,
+              to,
+              message: `「${group.name}」手动选择了 ${this.tagOf(to, built)}`,
+            }),
+          )
+        } else {
+          // 取消只是不再固定，出口先不动：这一轮 decide 会按分组规则重新挑，
+          // 真的换了节点由 reconcile 照实记一次切换
+          this.pins.delete(item.group_id)
+          this.events.push(
+            this.event(group, 'unpin', 'info', { message: `「${group.name}」取消了手动选择` }),
+          )
         }
-        state.activeNodeId = item.node_id
-        // 网页上的固定/取消固定立刻生效，不等下一轮 bootstrap
-        state.pinnedNodeId = item.node_id
-        state.lastSwitch = record
-        this.events.push(
-          this.event(group, item.node_id ? 'pin' : 'unpin', 'info', {
-            nodeId: item.node_id,
-            from: record.from,
-            to: record.to,
-            message: item.node_id
-              ? `「${group.name}」切到 ${tag}`
-              : `「${group.name}」取消了手动选择`,
-          }),
-        )
         acked.push(item.id)
       } catch (err) {
         /*
@@ -448,70 +755,49 @@ export class Engine {
   }
 
   /**
-   * 问设备上那个 selector 认得哪些节点。
-   *
-   * 网页上的候选列表是数据库里的，设备上的在 sing-box 配置文件里，两边可能对不上：
-   * 片段是旧的、手动删过节点、或者设备重启时没加载成功。切换只能切到设备认得的
-   * 节点上，所以把这个列表报上去，网页就能在用户点之前先说清楚。
-   *
-   * 读不出来时返回 null 而不是空数组：空数组会被网页当成"设备上一个都不认得"，
-   * 然后拦下所有切换；而这里只是 Clash API 暂时不通，不该让用户点不动任何东西。
+   * 只留下还在用的探测结果：节点换了、分组规则改了、分组改成手动了，
+   * 旧结果都该扔掉，否则网页的矩阵里会一直挂着早就不测的格子。
    */
-  private async selectorMembers(group: Group): Promise<string[] | null> {
-    try {
-      const selector = await this.clash.getSelector(group.selectorTag)
-      if (!selector) return null
-      // selector 里列的是 tag，网页认的是节点 id
-      const idOf = new Map(this.nodes.map((n) => [n.tag, n.id]))
-      return selector.all.map((tag) => idOf.get(tag) ?? tag)
-    } catch (err) {
-      console.error(
-        `读取「${group.name}」的候选节点失败：`,
-        err instanceof Error ? err.message : String(err),
-      )
-      return null
+  private pruneProbes(groups: Group[]): void {
+    const keep = new Set<string>()
+    for (const group of groups) {
+      if (group.selection === 'manual') continue
+      const state = this.groups.get(group.id)
+      if (!state) continue
+      // 目标按这个分组自己的规则取，不能混进别的分组的
+      for (const nodeId of state.healths.keys()) {
+        for (const targetId of group.targetIds) keep.add(`${nodeId}|${targetId}`)
+      }
     }
-  }
-
-  /** 每个分组的 selector 成员，按分组 id 索引；null 表示这次没读出来 */
-  private async selectorMembersOf(groups: Group[]): Promise<Map<string, string[] | null>> {
-    const entries = await runLimited(
-      groups.map((group) => async () => [group.id, await this.selectorMembers(group)] as const),
-      // 本机接口，开太多并发没意义，还容易打满 sing-box 的连接数
-      4,
-    )
-    return new Map(entries)
+    for (const key of [...this.latest.keys()]) {
+      if (!keep.has(key)) this.latest.delete(key)
+    }
+    for (const key of [...this.history.keys()]) {
+      if (!keep.has(key)) this.history.delete(key)
+    }
   }
 
   private buildReport(groups: Group[], members: Map<string, string[] | null>): unknown {
     return {
       device: {
-        id: this.state.deviceId,
         name: this.state.name,
         hostname: this.reporter.host,
         platform: this.state.platform,
-        agentVersion: this.state.agentVersion,
-        singboxVersion: this.state.singboxVersion,
+        osVersion: this.reporter.osVersion,
+        agentVersion: this.state.agentVersion || AGENT_VERSION,
+        singboxVersion: this.supervisor.singboxVersion,
         clashApi: this.state.clashApi,
         probeInbound: this.runtime?.listen ?? '',
         dataDir: this.state.dataDir,
+        proxyListen: this.supervisor.listen,
+        singboxError: this.supervisor.error,
       },
-      nodes: this.nodes.map((node) => ({
-        tag: node.tag,
-        protocol: node.protocol,
-        server: node.server,
-        port: node.port,
-        region: node.region,
-        outbound: node.outbound,
-        // 只有订阅来的节点带 identity，配置里的节点由 tag 认
-        ...(node.sourceId ? { identity: `${node.protocol}|${node.server}|${node.port}|${node.tag}` } : {}),
-      })),
       runtime: groups.map((group) => {
         const state = this.groups.get(group.id)
         return {
           groupId: group.id,
-          activeNodeId: state?.activeNodeId ?? null,
-          pinnedNodeId: state?.pinnedNodeId ?? null,
+          activeNodeId: state?.active ?? null,
+          pinnedNodeId: this.pins.get(group.id) ?? null,
           nodes: state ? [...state.healths.values()] : [],
           // 设备上这个 selector 认得的节点，网页拿它校验切换
           availableNodeIds: members.get(group.id) ?? null,
@@ -535,7 +821,7 @@ export class Engine {
 
   private buildProbes(): unknown[] {
     const out: unknown[] = []
-    for (const [last, key] of [...this.latest].map(([k, v]) => [v, k] as const)) {
+    for (const [key, last] of this.latest) {
       const [nodeId, targetId] = key.split('|')
       out.push({ nodeId, targetId, last, history: this.history.get(key) ?? [] })
     }
@@ -567,9 +853,45 @@ export class Engine {
     }
   }
 
-  private tagOf(nodeId: string): string {
-    return this.nodes.find((n) => n.id === nodeId)?.tag ?? nodeId
+  /** 节点 id 换成给人看的名字；id 认不出来时原样返回 */
+  private tagOf(nodeId: string, built: BuiltConfig | null): string {
+    if (nodeId === DIRECT) return '直连'
+    return (
+      built?.tagOf.get(nodeId) ??
+      this.nodes.find((n) => n.id === nodeId)?.tag ??
+      nodeId
+    )
   }
+
+  private selectorTagSet(built: BuiltConfig): Set<string> {
+    const outbounds = built.config.outbounds as Array<Record<string, unknown>> | undefined
+    return new Set((outbounds ?? []).map((o) => String(o.tag ?? '')))
+  }
+}
+
+/** 要探测的节点：自动分组的候选里的启用节点，去重 */
+function autoCandidateIds(
+  groups: Group[],
+  nodes: StoredNode[],
+  built: BuiltConfig,
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const group of groups) {
+    if (group.selection === 'manual') continue
+    for (const id of candidateIds(group, nodes)) {
+      if (seen.has(id) || !built.tagOf.has(id)) continue
+      seen.add(id)
+      out.push(id)
+    }
+  }
+  return out
+}
+
+function invert(map: Map<string, string>): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [id, tag] of map) out.set(tag, id)
+  return out
 }
 
 function sampleOf(detail: ProbeDetail): ProbeSample {
@@ -620,6 +942,33 @@ function reasonText(reason: string): string {
   }
 }
 
+/** 可中断的等待：stop() 之后立刻返回，不用等完这一轮 */
+class Wake {
+  private stopped = false
+  private timer: ReturnType<typeof setTimeout> | null = null
+  private resolve: (() => void) | null = null
+
+  wait(ms: number): Promise<void> {
+    if (this.stopped) return Promise.resolve()
+    return new Promise((resolve) => {
+      this.resolve = resolve
+      this.timer = setTimeout(() => {
+        this.timer = null
+        this.resolve = null
+        resolve()
+      }, ms)
+    })
+  }
+
+  stop(): void {
+    this.stopped = true
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    this.resolve?.()
+    this.resolve = null
+  }
+}
+
 /** 限定并发地跑一批任务，结果按原顺序放回去 */
 async function runLimited<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
   const results: T[] = []
@@ -633,8 +982,4 @@ async function runLimited<T>(tasks: (() => Promise<T>)[], limit: number): Promis
   })
   await Promise.all(workers)
   return results
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

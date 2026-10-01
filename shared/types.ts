@@ -7,7 +7,7 @@
  * 不做跨包的路径映射，改动时两处一起改。
  */
 
-export type Platform = 'macos' | 'linux'
+export type Platform = 'macos' | 'linux' | 'windows'
 
 /** 运行 sing-box 和 singweb Agent 的一台设备 */
 export interface Device {
@@ -15,7 +15,7 @@ export interface Device {
   name: string
   hostname: string
   platform: Platform
-  /** macOS 上是系统版本号（15.6），Linux 上是 os-release 里的发行版和版本（Ubuntu 24.04） */
+  /** macOS 上是系统版本号（15.6），Linux 上是 os-release 里的发行版和版本（Ubuntu 24.04），Windows 上是内核版本 */
   osVersion: string
   agentVersion: string
   singboxVersion: string
@@ -28,6 +28,10 @@ export interface Device {
   probeInbound: string
   /** Agent 写入阻断规则集等文件的目录 */
   dataDir: string
+  /** 本机代理（HTTP 和 SOCKS5）的监听地址，由 Agent 管理的 sing-box 提供；空表示 sing-box 还没起来 */
+  proxyListen: string
+  /** 本机 sing-box 起不来的原因，比如端口被占、找不到程序；null 表示正常 */
+  singboxError: string | null
   note?: string
 }
 
@@ -44,7 +48,10 @@ export interface ProxyNode {
   region: string
   /** 停用后不参与任何分组，也不再探测 */
   enabled: boolean
+  /** 来源的名字，显示用 */
   source: string
+  /** 来自哪个订阅，手动添加的节点为 null */
+  sourceId: string | null
 }
 
 /** 分组规则的类型，也就是探测目标的类型 */
@@ -143,7 +150,9 @@ export interface Group {
   id: string
   name: string
   selectorTag: string
+  /** 用在哪些设备上；空数组表示所有设备，包括以后接入的 */
   deviceIds: string[]
+  /** 一项条件都没设的是兜底分组，接管别的分组没接管的流量 */
   match: TrafficMatch
   candidates: Candidates
   selection: Selection
@@ -302,6 +311,8 @@ export type EventKind =
   | 'unpin'
   | 'device-offline'
   | 'device-online'
+  /** 有人拿着别的设备的 id 和密钥想要接入，被拒了 */
+  | 'device-rejected'
   | 'group-changed'
   | 'node-changed'
 
@@ -339,6 +350,7 @@ export interface EventPage {
 export type UpdateScope =
   | 'devices'
   | 'nodes'
+  | 'sources'
   | 'targets'
   | 'groups'
   | 'runtimes'
@@ -357,8 +369,6 @@ export interface NodeOutbound {
 export interface StoredNode extends ProxyNode {
   /** 订阅或配置里原样的出站内容，Agent 生成配置时直接用它 */
   outbound: NodeOutbound
-  /** 这条记录来自哪个订阅，手动添加的节点为 null */
-  sourceId: string | null
 }
 
 /** 一个订阅地址 */
@@ -374,8 +384,6 @@ export interface NodeSource {
   /** 最近一次拉取解析出的节点数 */
   nodeCount: number
   createdAt: string
-  /** 网页上点了「立即刷新」，等设备下一轮来领 */
-  refreshRequested: boolean
 }
 
 export type UserRole = 'admin' | 'viewer'
