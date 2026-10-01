@@ -277,8 +277,8 @@ export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: 
   /**
    * 重试一条放弃了的切换。
    *
-   * 失败多半是因为设备上的 sing-box 配置跟网页对不上——用户重新生成配置重启之后，
-   * 同样的操作就能成功了。所以这里不重新排队一条新的待办，而是把原来那条的次数清零
+   * 失败的原因修好之后（比如重新启用了节点，或者设备上的 sing-box 重新跑起来了），
+   * 同样的操作就能成功。所以这里不重新排队一条新的待办，而是把原来那条的次数清零
    * 让它重新下发，这样失败原因和节点都还在，用户点一下就行，不用回去重新选节点。
    */
   router.post(
@@ -289,7 +289,7 @@ export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: 
       const group = await store.findGroup(params.groupId)
       if (!group) throw notFound('找不到这个分组。')
 
-      const revived = await store.revivePendingSwitch(params.id)
+      const revived = await store.revivePendingSwitch(params.id, params.deviceId, params.groupId)
       if (!revived) throw notFound('这条切换已经不在队列里了，重新选一次节点。')
 
       await store.insertEvent({

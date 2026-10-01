@@ -200,23 +200,23 @@ export function registerAgentRoutes(router: Router, live: LiveHub): void {
       ? input.ids.filter((id): id is string => typeof id === 'string')
       : []
     if (!ids.length) throw new ApiError(400, '请给出要确认的操作。', 'ids')
-    await store.clearPendingSwitches(ids)
+    const cleared = await store.clearPendingSwitches(ids, device.id)
     live.update(['runtimes'])
-    sendJson(res, 200, { cleared: ids.length })
+    sendJson(res, 200, { cleared })
   }, 'agent')
 
   /**
    * 报告一次切换失败。
    *
    * Agent 执行失败时不会 ack，这一条会被反复领走。没有这个接口的话，一个永远
-   * 不会成功的操作（比如节点不在设备上的 selector 里）就会每 15 秒重试一次，
+   * 不会成功的操作（比如节点已经停用了，或者设备上的 sing-box 没在跑）就会每 15 秒重试一次，
    * 而且网页上完全看不出来。记满次数后服务端放弃，写一条事件，网页上显示为失败。
    */
   router.post('/agent/pending/:id/fail', async ({ req, res, params, device }) => {
     if (!device) throw unauthorized('设备凭据不对，请重新接入。')
     const input = asRecord(await readBody(req))
     const error = typeof input.error === 'string' ? input.error.trim() : ''
-    const row = await store.failPendingSwitch(params.id, error || '切换失败，没有说明原因。')
+    const row = await store.failPendingSwitch(params.id, device.id, error || '切换失败，没有说明原因。')
     // 待办可能已经被用户在网页上撤掉了，那不是错误
     if (!row) {
       sendJson(res, 200, { ok: true, abandoned: false })

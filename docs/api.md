@@ -151,11 +151,11 @@ irm "{站点}/api/v1/install/windows.ps1?token={token}" | iex
 
 - `queued`：已排队，等设备下一轮上报。
 - `switching`：Agent 报告过一次失败，还会再重试。
-- `failed`：连续 3 次失败后放弃，同时记一条 `switch-failed` 事件，事件里带着最后一次的原因。
+- `failed`：连续 5 次失败后放弃，同时记一条 `switch-failed` 事件，事件里带着最后一次的原因。
 
 `POST /devices/{deviceId}/groups/{groupId}/pending/{id}/retry` 把一条 `failed` 的待办退回队列，
-清掉失败计数，记一条 `switch` 事件。适合修好原因之后（比如把节点加回 selector）再试一次。
-这条待办已经被清掉或删除时返回 `404`。
+清掉失败计数，记一条 `switch` 事件。适合修好原因之后（比如重新启用了节点，或者设备上的
+sing-box 重新跑起来了）再试一次。这条待办已经被清掉、删除，或者不是这台设备这个分组的，返回 `404`。
 
 ## 配置预览
 
@@ -636,6 +636,7 @@ SSH 探测依次是 `tcp`、`banner`、`handshake`，做到目标的 `level` 为
 | `node-up` | 节点恢复 | 不可用的节点连续通过的轮数达到 `recoverThreshold` | `good` |
 | `all-down` | 全部不可用 | 候选节点全部不可用，按 `onAllFail` 处理；手动分组没有启用的候选节点。全部不可用期间出口又变了（比如改了 `onAllFail`），再记一条 | `crit` |
 | `recovered` | 出口恢复 | 从全部不可用中恢复，包括手动分组重新有了启用的候选节点 | `good` |
+| `switch-failed` | 切换失败 | 网页上发起的切换在设备上连续失败，达到重试上限后放弃，`message` 带着最后一次的原因 | `warn` |
 | `pin` | 手动固定 | 自动分组里固定节点 | `info`，固定到不可用的节点时是 `warn` |
 | `unpin` | 取消固定 | 手动取消，或者固定的节点被停用 | `info` |
 | `device-offline` | 设备离线 | | `warn` |

@@ -1083,38 +1083,45 @@ export const PENDING_MAX_ATTEMPTS = 5
 /**
  * 记一次失败。到上限就置 failed_at，从此不再下发。
  * 返回置位后的行，调用方据此决定要不要写事件。
+ * 只认这台设备自己的待办，下面几个也一样：一台设备的凭据不该动得了别的设备的队列
  */
 export async function failPendingSwitch(
   id: string,
+  deviceId: string,
   error: string,
 ): Promise<PendingSwitchRow | null> {
   const row = await one<PendingSwitchRow>(
     `update pending_switches
         set attempts = attempts + 1,
-            last_error = $2,
-            failed_at = case when attempts + 1 >= $3 then now() else failed_at end
-      where id = $1
+            last_error = $3,
+            failed_at = case when attempts + 1 >= $4 then now() else failed_at end
+      where id = $1 and device_id = $2
       returning *`,
-    [id, error.slice(0, 500), PENDING_MAX_ATTEMPTS],
+    [id, deviceId, error.slice(0, 500), PENDING_MAX_ATTEMPTS],
   )
   return row
 }
 
 /** 网页上点"重试"：清掉失败标记，重新排队 */
-export async function revivePendingSwitch(id: string): Promise<boolean> {
+export async function revivePendingSwitch(
+  id: string,
+  deviceId: string,
+  groupId: string,
+): Promise<boolean> {
   const row = await one<PendingSwitchRow>(
     `update pending_switches
         set attempts = 0, last_error = null, failed_at = null
-      where id = $1
+      where id = $1 and device_id = $2 and group_id = $3
       returning id`,
-    [id],
+    [id, deviceId, groupId],
   )
   return Boolean(row)
 }
 
-export async function clearPendingSwitches(ids: string[]): Promise<void> {
-  if (!ids.length) return
-  await run('delete from pending_switches where id = any($1)', [ids])
+/** Agent 确认执行完的待办，返回实际划掉了几条 */
+export async function clearPendingSwitches(ids: string[], deviceId: string): Promise<number> {
+  if (!ids.length) return 0
+  return run('delete from pending_switches where id = any($1) and device_id = $2', [ids, deviceId])
 }
 
 /** 设备都删了，队列也没意义 */
