@@ -2,8 +2,6 @@
  * 初始化内容。只有在库里还什么都没有的时候才建，建成之后就不再插手：
  * 用户在网页上改了名称、换了规则、删掉整个分组，服务端都不该在下次重启时
  * 又把它变回来。每一样都单独判存不存在，所以删掉其中一样也不会导致另一样被重建。
- *
- * 这些不是演示数据。演示数据在 src/api/mock 里，跑在浏览器内存中，跟这里无关。
  */
 
 import { EMPTY_MATCH } from './model.ts'
@@ -32,7 +30,7 @@ export async function ensureGroups(): Promise<void> {
       failThreshold: 3,
       recoverThreshold: 2,
       probeIntervalSec: 60,
-      toleranceMs: 50,
+      toleranceMs: 150,
       failback: true,
       interruptExisting: false,
       onAllFail: 'keep-last',
@@ -105,7 +103,9 @@ export async function ensureSshGroup(): Promise<void> {
       failThreshold: 3,
       recoverThreshold: 2,
       probeIntervalSec: 60,
-      toleranceMs: 50,
+      // 经代理连 SSH 要来回好几趟，测出来的延迟本身就会上下跳一两百毫秒。
+      // 容忍度比这个小，差不多快的几个节点会轮流被判成「明显更快」，出口隔几分钟就换一次
+      toleranceMs: 150,
       failback: true,
       interruptExisting: false,
       // SSH 会话断在半路比走错出口更烦人，所以全都探不通时保持当前节点

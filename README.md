@@ -76,7 +76,7 @@ npm run preview     # 在本地预览构建结果
 
 `VITE_` 开头的变量在构建时写进代码，修改后要重新构建。
 
-订阅链接不在这里配置。它在数据库里，由网页的「订阅」页面录入——服务端只从库里读，只下发给已接入的设备，不进仓库也不进日志。
+订阅链接不在这里配置。它在数据库里，由网页的「订阅」页面录入。拉订阅、解析节点都由服务端自己做，设备只从服务端拿整理好的节点，见不到订阅链接；链接也不进仓库、不进日志。
 
 ## 部署
 
@@ -147,7 +147,7 @@ src/            前端（Vite + React）
 server/         管理服务（Node + PostgreSQL）
   schema.sql    库结构
   src/routes/   接口：web 给浏览器，agent 给设备
-agent/          设备上的 Agent：拉订阅、探测、切 selector
+agent/          设备上的 Agent：生成本机 sing-box 配置、探测、切 selector
 shared/         前后端和 Agent 共用的代码：类型、筛选、sing-box 片段、订阅解析、运行状态推导
 docs/api.md     前端、管理服务和 Agent 之间的接口约定
 Dockerfile      单进程同时发前端和接口

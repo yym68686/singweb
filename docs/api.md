@@ -1,6 +1,6 @@
 # 管理服务接口
 
-前端在 `VITE_API_MODE=http` 时通过这些接口和管理服务通信。字段的类型定义在 [`src/api/types.ts`](../src/api/types.ts)。演示模式的模拟引擎 [`src/api/mock/engine.ts`](../src/api/mock/engine.ts) 按本文的规则实现，可以当作参考实现。
+前端和设备上的 Agent 都通过这些接口和管理服务通信。字段的类型定义在 [`src/api/types.ts`](../src/api/types.ts)。探测、选择和切换的规则由 Agent（[`agent/src/engine.ts`](../agent/src/engine.ts)、[`agent/src/health.ts`](../agent/src/health.ts)）实现。
 
 ## 通用约定
 
@@ -39,7 +39,7 @@
 | GET | `/sources` | | `NodeSource[]` |
 | POST | `/sources` | `{ "name": string, "url": string }` | `NodeSource` |
 | PATCH | `/sources/{id}` | `{ "name"?: string, "url"?: string, "enabled"?: boolean }` | `NodeSource` |
-| POST | `/sources/{id}/refresh` | | `{ "ok": true, "requestedAt": string }` |
+| POST | `/sources/{id}/refresh` | | `{ "ok": boolean, "error": string \| null, "nodeCount": number, "refreshedAt": string, "source": NodeSource \| null }` |
 | DELETE | `/sources/{id}` | | `204` |
 | GET | `/targets` | | `Target[]` |
 | POST | `/targets` | `TargetInput` | `Target` |
@@ -75,7 +75,7 @@
 | `dataDir` | string | Agent 存放阻断规则集等文件的目录 |
 | `note` | string，可选 | 备注 |
 
-管理服务一段时间收不到上报，就把设备标记为离线，并记一条 `device-offline` 事件（演示模式是 90 秒）；重新收到上报时标记为在线，记 `device-online`。设备离线时：
+管理服务一段时间收不到上报，就把设备标记为离线，并记一条 `device-offline` 事件（90 秒）；重新收到上报时标记为在线，记 `device-online`。设备离线时：
 
 - `GET /runtime` 仍返回它最后上报的状态，`state` 为 `stale`。
 - 立即探测、固定节点和选择节点返回 `409`。
@@ -212,33 +212,52 @@ irm "{站点}/api/v1/install/windows.ps1?token={token}" | iex
 
 ## 订阅来源
 
-订阅来源是一条订阅链接。链接和它里面的 token 只存在管理服务的数据库里，由 Agent 在下一轮上报时领走，
-管理服务自己不去访问订阅站——真正联网取内容的一直是设备上的 Agent。
+订阅来源是一条订阅链接。链接和它里面的 token 只存在管理服务的数据库里：**拉取、解析、入库都在服务端做**，
+设备从来不碰订阅链接，甚至不知道有几个订阅——它从 `GET /agent/bootstrap` 拿到的已经是归一化之后的节点池。
+所以没有设备接着的时候，网页上照样能看到节点。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | string | |
 | `name` | string | 订阅名称，最多 60 个字 |
 | `url` | string | 完整的订阅链接，含 token |
-| `enabled` | boolean | 停用后设备不再拉取它，已经导入的节点保留 |
-| `lastFetchedAt` | string \| null | 最近一次拉取成功的时间 |
-| `lastError` | string \| null | 最近一次拉取失败的原因 |
-| `nodeCount` | number | 最近一次拉取解析出的节点数 |
+| `enabled` | boolean | 停用后不再拉取，已经导入的节点保留 |
+| `lastFetchedAt` | string \| null | 最近一次拉取的时间，成功失败都算；从没拉过是 null |
+| `lastError` | string \| null | 最近一次拉取失败的原因，成功后清空。只写订阅站的主机名，不带 token |
+| `nodeCount` | number | 最近一次成功拉取解析出的节点数，失败时保留上次的数 |
 | `createdAt` | string | |
-| `refreshRequested` | boolean | 用户点了「立即刷新」，设备还没来领 |
 
 `url` 只以 http 或 https 开头、必须有主机名，否则返回 `400`。
 
-**拉取的节奏由 Agent 掌握。** Agent 每 6 小时重新取一次订阅内容，失败后 5 分钟重试；
-用户在网页上点了「立即刷新」，或者这个订阅从没拉过，Agent 就立刻取一次，不等这个周期。
-`POST /sources/{id}/refresh` 只打一个时间戳，不自己去联网，所以响应里没有新节点：
-要等设备下一轮上报，`lastFetchedAt` 和 `nodeCount` 才会变。停用的订阅调它返回 `409`。
+**拉取的节奏。** 服务端每 60 秒扫一遍（`SubscriptionScheduler`），启动时先跑一次：
+过了周期的就拉，成功后 6 小时再拉，失败后 5 分钟重试；同时最多 3 个订阅在拉，
+一次响应最多 60 秒、最多解析 2000 个节点。请求带 `v2rayN/6.31` 的 User-Agent。
+
+**解析。** 响应体以 `{` 或 `[` 开头就当 JSON，否则当成一行一条的链接列表。
+节点按协议、地址、端口、凭据和传输方式去重，所以同一个节点出现在两条订阅里只会留一条。
+
+**`POST /sources/{id}/refresh` 是同步的。** 它当场联网拉一次再返回，不用等下一轮周期，
+响应里直接给出这次的结果：
+
+| 字段 | 说明 |
+| --- | --- |
+| `ok` | 这次拉成功了吗 |
+| `error` | 失败原因，成功时是 null |
+| `nodeCount` | 这次解析出的节点数 |
+| `refreshedAt` | 这次拉取的时间 |
+| `source` | 更新后的订阅 |
+
+拉取失败不算接口失败：**上次拉到的节点原样留着**，接口仍回 `200`，由 `ok` 说明这一次没成。
+停用的订阅调它返回 `409`。同一个订阅正在拉时，重复调用合并到那一次上。
+
+新建订阅时会当场拉一次，所以添加完立刻就有节点，不用等调度。
+改地址会重新拉——那等于同一个订阅现在指向了别处；从停用改成启用也会拉一次。
 
 **删除订阅会连它导入的节点一起删。** 这些节点正被分组当候选节点用时，那台设备上会少一截出口，
 界面在确认框里提示数量和影响。
 
 **界面显示地址时会隐去查询参数的值**，例如 `https://example.com/sub?token=••••`。
-完整的链接仍然会被完整地存进数据库、完整地发给 Agent；隐去只是为了截图和录屏不泄露 token。
+完整的链接仍然会被完整地存进数据库；隐去只是为了截图和录屏不泄露 token。
 
 ## 探测目标
 
@@ -351,7 +370,7 @@ irm "{站点}/api/v1/install/windows.ps1?token={token}" | iex
 | `failThreshold` | number | 连续多少轮未通过，判为不可用。新建时默认 3 |
 | `recoverThreshold` | number | 不可用的节点连续多少轮通过，才重新可用。新建时默认 2 |
 | `probeIntervalSec` | number | 探测间隔。新建时默认 15 |
-| `toleranceMs` | number | 按延迟选择时，当前节点慢出这么多毫秒算「明显变慢」，连续两轮才切换。新建时默认 50 |
+| `toleranceMs` | number | 按延迟选择时，当前节点慢出这么多毫秒算「明显变慢」，连续两轮才切换。新建时默认 150 |
 | `failback` | boolean | 按优先级选择时，更高优先级的节点恢复后是否切回。新建时默认打开 |
 | `interruptExisting` | boolean | 切换时是否断开经过旧节点的已有连接。新建时默认关闭 |
 | `onAllFail` | `block` \| `keep-last` \| `direct` | 候选节点全部不可用时怎么办，见[全部不可用](#全部不可用)。新建时默认 `block` |
@@ -671,7 +690,7 @@ data: {"type":"reset"}
 
 - 每个分组一个 selector 出站，tag 为 `selectorTag`，按候选节点的顺序包含启用的节点。按规则自动切换、`onAllFail` 为 `direct` 的分组再加上 `direct`。`interrupt_exist_connections` 对应 `interruptExisting`。分组没有启用的候选节点、又没有选 `direct` 时不生成 selector（sing-box 不接受空的 selector），它接管的流量直接拒绝，不会走直连。
 - 路由规则按 `match` 把流量交给 selector。目标地址这一类的字段（`domain_suffix`、`domain_keyword`、`ip_cidr`、`rule_set`）在 sing-box 的同一条规则里本来就是“或”的关系。协议和端口是两类字段，写进同一条规则就要同时满足，所以按协议、按端口各写一条。`process_name` 加到每一条里。一个分组因此生成一到两条规则。
-- 分组之间按条件的具体程度排列：设置的条件类别多的在前；一样多时，有目标地址条件的在前；再按分组列表的顺序。比如演示数据里，「数据库隧道」（目标地址和端口）最先，然后是「GitHub」「AI 服务」「流媒体」（目标地址），最后是「SSH 出口」（协议或端口）。所以连 github.com 的 SSH 流量交给「GitHub」。
+- 分组之间按条件的具体程度排列：设置的条件类别多的在前；一样多时，有目标地址条件的在前；再按分组列表的顺序。比如同时有「数据库隧道」（目标地址和端口）、「GitHub」（目标地址）和「SSH 出口」（协议或端口）三个分组时，「数据库隧道」最先，「SSH 出口」最后，所以连 github.com 的 SSH 流量交给「GitHub」。
 - 有分组按协议、域名、域名关键字或规则集识别流量时，交给 selector 的规则前面先加一条 `sniff` 规则，sing-box 才能从 TLS 的 SNI、HTTP 的 Host 等拿到域名和协议。
 - 设备上有按规则自动切换的分组时，还有一个 socks 入站 `singweb-probe`，监听 `probeInbound`。这些分组启用的候选节点，每个对应一个用户 `probe-{节点 tag}`，路由规则把这个用户的连接送到对应的节点，其他连接一律拒绝，这几条规则排在最前面。Agent 用哪个用户名连接，就是经由哪个节点探测。
 - 按规则自动切换、`onAllFail` 为 `block` 的分组还有一个本地规则集 `singweb-block-{selectorTag}`，文件是 `{dataDir}/block-{selectorTag}.json`。没有生成 selector 的分组已经直接拒绝，不需要它。引用它的 `reject` 规则用 `logical` 的 `and` 把这个规则集和分组的条件组合起来，排在这个分组交给 selector 的规则前面。不把规则集直接写进同一条规则，是因为分组自己也可能引用规则集，同一条规则里的多个规则集是“或”的关系，会连带阻断不相干的流量。平时规则集是空的，这些规则不匹配任何连接。
@@ -682,16 +701,11 @@ socks 用户的密码和 Clash API 的 secret 由 Agent 在本机生成，不经
 
 ### 订阅
 
-- Agent 从 `GET /agent/bootstrap` 和 `GET /agent/sources` 拿订阅列表，返回的每一项是 `{ id, name, url, force }`。
-  链接只在管理和设备之间传递，设备不必知道它属于谁。
-- `force` 为真时立刻取一次：用户在网页上点了「立即刷新」（`refresh_requested_at` 有值），
-  或者这个订阅从没拉过（`last_fetched_at` 为空）。为假时 Agent 自己按 6 小时的节奏判断。
-- 取订阅用的是 Node 直接发的请求，不走本机代理——订阅站通常国内可直连。
-  User-Agent 伪装成 `v2rayN/6.31`：多数订阅站按 UA 分流，不认识的 UA 直接 403，
-  而 Clash、sing-box 这些客户端的 UA 换回来的是 YAML 或 JSON，只有链接列表这一种格式 Agent 会解析。
-- 内容以 `{` 或 `[` 开头时按 JSON 解析（Clash / sing-box 的 proxies），否则按订阅链接列表解析。
-- 结果用 `POST /agent/sources/{id}/result` 回报，节点一起交上去。
-  拉取失败时不带节点上报，服务端因此不会清空这个订阅已经导入的节点——订阅站临时挂了不代表节点没了。
+- Agent 不拉订阅，也拿不到订阅链接。它每轮上报前调 `GET /agent/bootstrap`，`nodes` 里是服务端从各个订阅解析、去重之后的节点池，
+  连同手动添加的节点，每个都带着现成的 sing-box 出站配置。设备只知道 singweb 自己的地址。
+- 订阅拉到了新节点、节点被停用或删除，下一轮 bootstrap 就能看到，Agent 照新的节点池重新生成本机配置，
+  所以订阅的变化最多晚一个上报周期到达设备。
+- 订阅站临时拉不到时节点池不变（见[订阅来源](#订阅来源)），设备上的出口不受影响。
 
 ### 探测
 
@@ -720,11 +734,15 @@ socks 用户的密码和 Clash API 的 secret 由 Agent 在本机生成，不经
 
 1. 当前节点可用，就不切换。只有两种例外：
    - `priority` 且打开了 `failback`，优先级更高的节点恢复可用：切回去。
-   - `latency`，当前节点的延迟中位数比最快的节点高出 `toleranceMs` 以上，而且连续两个探测轮次都如此：切到那一轮最快的节点。
+   - `latency`，当前节点的延迟中位数比最快的节点高出 `toleranceMs` 以上，而且连续两个探测轮次都如此：切到那一轮最快的节点。只比较已经有至少 3 轮延迟样本的节点。
 2. 当前节点不可用、被停用或者不再是候选节点：`priority` 选可用节点里优先级最高的；`latency` 选延迟中位数最低的。这时立刻切换，不等轮次。
 3. 当前节点还在首轮探测中：等结果出来再决定。
 
 `toleranceMs` 管的是单轮差多少算「明显变慢」，管不了这个差值是噪声还是真的变慢了。公网延迟一轮里跳几百毫秒很常见，而分组里几个节点的中位数常常只差几十毫秒，只看一轮就换会导致每个探测周期换一次出口，连接被反复打断。所以慢出容忍度要连续两轮才真的切，且只数当前节点输了几轮、不管输给谁——几个差不多快的节点轮流当第一时，当前节点其实一直都慢，不能因为领先的换了人就从头数。当前节点一换（固定节点、故障转移），轮数就从零开始。
+
+连续两轮的前提是中位数扛得住一次偶然的慢，所以样本不到 3 个的节点还不拿来比快慢：只有一两个样本时，一次慢就能把中位数顶上去，而且下一轮还留在里面，一次噪声就凑够了两轮。Agent 刚启动时最容易这样，第一轮探测要现建连接，往往明显偏慢。
+
+`toleranceMs` 本身也要比噪声大。经代理探测要来回好几趟，比如经代理拿 SSH 标识，延迟常在几百毫秒到一秒，一轮里跳一两百毫秒很常见，几个节点的中位数也常常互相差出几十到一百多毫秒。容忍度比这个小，差不多快的节点会轮流被判成「明显更快」，出口隔几分钟就换一次。所以新建分组默认 150 ms。
 
 Agent 每次上报都会把最近一次探测也带上去，而探测比上报间隔长得多。服务端的 `history` 按探测时间 `at` 去重，只有 `at` 变了才追加一条；重复上报只刷新 `last` 和 `updated_at`。
 

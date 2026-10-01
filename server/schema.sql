@@ -116,7 +116,7 @@ create table if not exists groups (
   fail_threshold       integer not null default 3,
   recover_threshold    integer not null default 2,
   probe_interval_sec   integer not null default 60,
-  tolerance_ms         integer not null default 50,
+  tolerance_ms         integer not null default 150,
   failback             boolean not null default true,
   interrupt_existing   boolean not null default false,
   on_all_fail          text not null default 'block' check (on_all_fail in ('block', 'keep-last', 'direct')),

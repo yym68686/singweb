@@ -137,7 +137,7 @@ interface Draft {
   onAllFail: AllFailAction
 }
 
-const DEFAULT_TOLERANCE = 50
+const DEFAULT_TOLERANCE = 150
 
 function blankDraft(): Draft {
   return {
@@ -899,7 +899,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                           field="toleranceMs"
                           label="延迟容差"
                           unit="ms"
-                          hint="当前节点比最快的慢出这么多算「明显变慢」，连续两轮都如此才切过去。0–1000。"
+                          hint="当前节点比最快的慢出这么多算「明显变慢」，连续两轮都如此才切过去。经代理测的延迟本身会上下跳一两百毫秒，设得太小会在差不多快的节点之间来回切。0–1000。"
                           min={0}
                           max={1000}
                           value={draft.toleranceMs}

@@ -56,17 +56,12 @@ export function applyRound(
     state = 'unknown'
   }
 
-  const latencies = history
-    .filter((h) => h.ok && h.latencyMs !== null)
-    .map((h) => h.latencyMs as number)
-    .slice(-LATENCY_WINDOW)
-
   const health: NodeHealth = {
     nodeId: opinion.nodeId,
     state,
     consecutiveFails,
     consecutiveSuccesses,
-    latencyMs: median(latencies),
+    latencyMs: median(latencySamples(history)),
     lastRoundOk: opinion.ok,
     failingTargetIds: opinion.failingTargetIds,
     changedAt: state === before ? (previous?.changedAt ?? null) : at,
@@ -79,6 +74,14 @@ export function applyRound(
     before === 'unknown' || state === before || state === 'unknown' ? null : state
 
   return { health, changed }
+}
+
+/** 算延迟用的样本：最近几轮里通过了的那些轮的延迟 */
+function latencySamples(history: RoundSample[]): number[] {
+  return history
+    .filter((h) => h.ok && h.latencyMs !== null)
+    .map((h) => h.latencyMs as number)
+    .slice(-LATENCY_WINDOW)
 }
 
 /**
@@ -106,6 +109,16 @@ export interface Outpaced {
 /** 当前节点连续慢出容忍度这么多轮才换，扛住单轮抖动 */
 export const SWITCH_ROUNDS = 2
 
+/**
+ * 按延迟比快慢时，节点至少要有这么多轮的延迟样本。
+ *
+ * 延迟是最近几轮的中位数，只有一两个样本时它就是那一两次的值，一次偶然的慢就能把它顶上去，
+ * 而且下一轮还留在里面——连续 SWITCH_ROUNDS 轮才换的防抖，被一次噪声就凑够了。
+ * Agent 刚启动时最容易这样：第一轮探测要现建连接，往往明显偏慢。
+ * 三个样本的中位数才扛得住一次偶然的慢。
+ */
+const MIN_SAMPLES = 3
+
 export interface Choice {
   /** 该走哪个节点。null 表示一个可用的都没有 */
   pick: string | null
@@ -130,6 +143,7 @@ export interface Choice {
  *   慢出容忍度的，也要连续 SWITCH_ROUNDS 轮都如此才换，换到那一轮最快的节点。
  *   容忍度管的是单轮差多少算「明显」，管不了这个差值是噪声还是真的变慢了，
  *   多看一轮才分得出来。没有延迟数据的节点排在最后。
+ *   延迟样本不到 MIN_SAMPLES 个的节点还不拿来比快慢。
  *
  * 当前节点不能用（不可用、被移出候选、还没有当前节点）时立刻换，不等轮数：
  * 这时没有可比的对象，故障转移也不该拖。
@@ -155,8 +169,13 @@ export function chooseActive(
 
   const latency = (id: string) => healths.get(id)?.latencyMs ?? Number.POSITIVE_INFINITY
   // 延迟一样时留下排在前面的
-  const best = usable.reduce((a, b) => (latency(b) < latency(a) ? b : a))
-  if (!keep) return { pick: best, outpaced: null, why: 'unusable' }
+  const fastest = (ids: string[]) => ids.reduce((a, b) => (latency(b) < latency(a) ? b : a))
+  if (!keep) return { pick: fastest(usable), outpaced: null, why: 'unusable' }
+
+  // 当前节点的样本还不够就先不比；别的节点样本不够的，先不跟它比
+  const settled = usable.filter((id) => latencySamples(healths.get(id)?.history ?? []).length >= MIN_SAMPLES)
+  if (!settled.includes(current)) return { pick: current, outpaced: null, why: null }
+  const best = fastest(settled)
 
   const gap = latency(current) - latency(best)
   // 两边都没有延迟数据时差值是 NaN，也算不比它慢

@@ -431,7 +431,7 @@ export function checkGroup(
     failThreshold: num('failThreshold', 1, 10, 3),
     recoverThreshold: num('recoverThreshold', 1, 10, 2),
     probeIntervalSec: num('probeIntervalSec', 5, 600, 60),
-    toleranceMs: num('toleranceMs', 0, 1000, 50),
+    toleranceMs: num('toleranceMs', 0, 1000, 150),
     failback: raw.failback === undefined ? true : asBool(raw.failback, 'failback'),
     interruptExisting:
       raw.interruptExisting === undefined
