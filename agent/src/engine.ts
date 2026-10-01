@@ -29,7 +29,7 @@ import { candidateIds } from '../../shared/candidates.ts'
 import { blockRuleSetTag, buildConfig } from '../../shared/singbox.ts'
 import type { BuiltConfig } from '../../shared/singbox.ts'
 import { probeTarget, type ProbeContext } from './probe.ts'
-import { applyRound, chooseActive, type NodeOpinion, type Outpaced } from './health.ts'
+import { applyRound, chooseActive, SWITCH_ROUNDS, type Choice, type NodeOpinion, type Outpaced } from './health.ts'
 import { openProbeRuntime, type ProbeRuntime } from './runtime.ts'
 import type { ClashSelector } from './singbox.ts'
 import type { PendingSwitch } from './client.ts'
@@ -63,6 +63,11 @@ interface GroupState {
    * 不然直连会被记成一次普通切换、恢复会被记成别人改的。
    */
   cause: 'all-down' | 'recovered' | null
+  /**
+   * 自动切换时当前节点为什么被换掉，跟 cause 一样从 decide 带到 reconcile 去记事件。
+   * 记着是为哪个节点算的：切换失败了下一轮接着切，那时 decide 不会再算一遍原因
+   */
+  why: { nodeId: string; text: string } | null
   /** 读到过一次 selector 了没有。第一次读到的是启动前就在的状态，不算切换 */
   synced: boolean
   lastRoundAt: string | null
@@ -189,6 +194,7 @@ export class Engine {
         active: null,
         allFail: false,
         cause: null,
+        why: null,
         synced: false,
         lastRoundAt: null,
         lastSwitch: null,
@@ -217,7 +223,7 @@ export class Engine {
    * 手动分组不探测：出口就是固定的那个节点，没有就取第一个启用的候选。
    * 自动分组按健康度和策略挑；一个可用的都没有时按「全部节点都不可用时」处理。
    * 候选全都还没测出结论（unknown）时不下结论，出口保持不动——
-   * 刚启动就切一次是没有意义的。
+   * 刚启动就切一次是没有意义的。还没读到过设备上现在走的是谁，也先不换节点。
    *
    * 阻断要每轮都重新加进 this.blocking：这个集合每轮清空重算，漏一轮规则集就会被清掉，
    * 阻断就悄悄失效了。
@@ -254,7 +260,15 @@ export class Engine {
     state.outpaced = choice.outpaced
     const pick = choice.pick
     if (pick) {
+      // 还没读到过设备上的 selector，不知道现在走的是谁。先让 reconcile 把它认作现任
+      // （Agent、sing-box 重启后 cache_file 会恢复上一次的选择），下一轮再按健康度判断。
+      // 现在就挑的话是拿「没有现任」去比，会直接换到这一轮最快的节点，连续几轮才换的防抖就白设了
+      if (!state.synced && state.decided === undefined) return
       if (state.allFail) state.cause = 'recovered'
+      const current = state.decided ?? null
+      if (choice.why) {
+        state.why = { nodeId: pick, text: this.whyText(choice.why, group, state, enabled, current, pick, built) }
+      }
       state.decided = pick
       state.allFail = false
       return
@@ -477,19 +491,48 @@ export class Engine {
       reason = '节点恢复了'
     } else if (ours) {
       message = `「${group.name}」改走 ${name}`
-      reason =
-        to !== null && this.pins.get(group.id) === to
-          ? '按手动选择切换'
-          : group.selection === 'manual'
-            ? '没有手动选择，用分组里第一个候选节点'
-            : '按分组规则自动切换'
+      if (to !== null && this.pins.get(group.id) === to) reason = '按手动选择切换'
+      else if (group.selection === 'manual') reason = '没有手动选择，用分组里第一个候选节点'
+      else if (to !== null && state.why?.nodeId === to) {
+        reason = state.why.text
+        message += `：${reason}`
+      } else reason = '按分组规则自动切换'
     } else {
       message = `「${group.name}」在设备上被改成了 ${name}`
       reason = '设备上的选择变了'
     }
 
     state.lastSwitch = { at: new Date().toISOString(), from, to, reason }
+    state.why = null
     this.events.push(this.event(group, kind, severity, { nodeId: to, from, to, message }))
+  }
+
+  /** 自动切换时当前节点为什么被换掉，写进切换事件：网页上只看得到事件，得在这里说清楚 */
+  private whyText(
+    why: NonNullable<Choice['why']>,
+    group: Group,
+    state: GroupState,
+    enabled: string[],
+    current: string | null,
+    pick: string,
+    built: BuiltConfig,
+  ): string {
+    if (why === 'failback') return `排在前面的 ${this.tagOf(pick, built)} 能用了，按设置切回去`
+    if (current === null) return '之前没有出口'
+    const from = this.tagOf(current, built)
+    const health = state.healths.get(current)
+    if (why === 'slower') {
+      const a = health?.latencyMs ?? null
+      const b = state.healths.get(pick)?.latencyMs ?? null
+      const gap = a !== null && b !== null ? `，现在慢 ${a - b} ms` : ''
+      return `${from} 连续 ${SWITCH_ROUNDS} 轮比最快的节点慢 ${group.toleranceMs} ms 以上${gap}`
+    }
+    if (!enabled.includes(current)) return `${from} 不在候选节点里了`
+    if (health?.state === 'down' && health.consecutiveFails > 0) {
+      return `${from} 连续 ${health.consecutiveFails} 轮没通过分组规则`
+    }
+    if (health?.state === 'down') return `${from} 不可用`
+    return `${from} 还没通过分组规则`
   }
 
   /** 探测进程的出站列表写死在配置里，节点集合变了就得重启它 */

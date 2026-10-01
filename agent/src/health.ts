@@ -111,6 +111,12 @@ export interface Choice {
   pick: string | null
   /** 当前节点还在被比下去、但没到轮数时的记录；其余情况是 null */
   outpaced: Outpaced | null
+  /**
+   * 为什么不留在当前节点上，pick 就是当前节点（或者是 null）时没有：
+   * unusable 是当前节点不能用（不可用、被移出候选、还没有当前节点），
+   * slower 是连续几轮慢出容忍度，failback 是排在前面的节点恢复了、按「恢复后切回」切回去
+   */
+  why: 'unusable' | 'slower' | 'failback' | null
 }
 
 /**
@@ -138,28 +144,30 @@ export function chooseActive(
   roundAt: string | null = null,
 ): Choice {
   const usable = candidateIds.filter((id) => healths.get(id)?.state === 'up')
-  if (!usable.length) return { pick: null, outpaced: null }
+  if (!usable.length) return { pick: null, outpaced: null, why: null }
   const keep = current !== null && usable.includes(current)
 
   if (group.strategy === 'priority') {
-    return { pick: keep && !group.failback ? current : usable[0], outpaced: null }
+    if (keep && !group.failback) return { pick: current, outpaced: null, why: null }
+    const pick = usable[0]
+    return { pick, outpaced: null, why: pick === current ? null : keep ? 'failback' : 'unusable' }
   }
 
   const latency = (id: string) => healths.get(id)?.latencyMs ?? Number.POSITIVE_INFINITY
   // 延迟一样时留下排在前面的
   const best = usable.reduce((a, b) => (latency(b) < latency(a) ? b : a))
-  if (!keep) return { pick: best, outpaced: null }
+  if (!keep) return { pick: best, outpaced: null, why: 'unusable' }
 
   const gap = latency(current) - latency(best)
   // 两边都没有延迟数据时差值是 NaN，也算不比它慢
-  if (!(gap > Math.max(0, group.toleranceMs))) return { pick: current, outpaced: null }
+  if (!(gap > Math.max(0, group.toleranceMs))) return { pick: current, outpaced: null, why: null }
 
   let rounds = 1
   if (outpaced?.nodeId === current) {
     rounds = outpaced.roundAt === roundAt ? outpaced.rounds : outpaced.rounds + 1
   }
-  if (rounds >= SWITCH_ROUNDS) return { pick: best, outpaced: null }
-  return { pick: current, outpaced: { nodeId: current, rounds, roundAt } }
+  if (rounds >= SWITCH_ROUNDS) return { pick: best, outpaced: null, why: 'slower' }
+  return { pick: current, outpaced: { nodeId: current, rounds, roundAt }, why: null }
 }
 
 export function median(values: number[]): number | null {
