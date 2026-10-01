@@ -1,17 +1,6 @@
 /**
- * sing-box 片段生成放在 shared/singbox.ts，管理服务和 Agent 复用同一份实现。
- * 这里只是转出去，让前端继续用 '../lib/singbox' 这个路径。
+ * sing-box 相关的少量判断放在 shared/singbox.ts，管理服务、Agent 和前端共用一份。
+ * 这里只转出前端真正用得到的那几个：整份配置由服务端生成（POST /config/preview），
+ * 前端不再自己拼配置。
  */
-export {
-  blockRuleSetContent,
-  blockRuleSetPath,
-  blockRuleSetTag,
-  buildSnippet,
-  externalRuleSets,
-  matchConditions,
-  MIN_SINGBOX,
-  PROBE_INBOUND,
-  SECRET_PLACEHOLDER,
-  toJson,
-  versionAtLeast,
-} from '../../shared/singbox.ts'
+export { MIN_SINGBOX, singboxTooOld, toJson } from '../../shared/singbox.ts'

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router'
 import { ChevronDown, CircleMinus, ClockFading, Laptop, Pencil, Pin, Radar, RotateCw, Split } from 'lucide-react'
 import { groupsOf, outletName, useCatalog, type Catalog } from '../api/catalog'
 import { errorMessage } from '../api/errors'
-import { useEvents, useNow, useProbeCells, useProbeNow, useRetryPending, useRuntimes, useSetPin } from '../api/hooks'
+import { useConfigPreview, useEvents, useNow, useProbeCells, useProbeNow, useRetryPending, useRuntimes, useSetPin } from '../api/hooks'
 import { DIRECT, type Device, type Group, type GroupRuntime, type NodeHealth, type ProbeDetail } from '../api/types'
 import { Badge, HealthBadge, RuntimeBadge } from '../components/Badge'
 import { Button, ButtonLink } from '../components/Button'
@@ -24,7 +24,7 @@ import { formatFull, gapBefore, joinZh, ms, timeAgo } from '../lib/format'
 import { rulesText } from '../lib/groupText'
 import { keepNames } from '../lib/keepNames'
 import { allFailLabel, osText, probeFailText, protocolLabel, strategyLabel } from '../lib/labels'
-import { MIN_SINGBOX, buildSnippet, externalRuleSets, toJson, versionAtLeast } from '../lib/singbox'
+import { MIN_SINGBOX, singboxTooOld, toJson } from '../lib/singbox'
 import t from '../components/DataTable.module.css'
 import page from '../styles/page.module.css'
 import s from './DeviceDetail.module.css'
@@ -81,7 +81,9 @@ function DeviceBody({ d, c, rts, now }: BodyProps) {
   const groups = groupsOf(c, d.id)
   // 只有手动选择的分组时，没有要探测的
   const probing = groups.some((g) => g.selection === 'auto')
-  const oldSingbox = !versionAtLeast(d.singboxVersion, MIN_SINGBOX)
+  const oldSingbox = singboxTooOld(d.singboxVersion)
+  // 离线时报的是很久以前的状态，只提示离线就够了
+  const singboxDown = d.online && !!d.singboxError
   const offlineAgo = timeAgo(d.lastSeenAt, now)
 
   return (
@@ -114,12 +116,18 @@ function DeviceBody({ d, c, rts, now }: BodyProps) {
       />
 
       <div className={page.stack}>
-        {(!d.online || oldSingbox) && (
+        {(!d.online || oldSingbox || singboxDown) && (
           <div className={page.stackSm}>
             {!d.online && (
               <Notice tone="offline" title={`设备${gapBefore(offlineAgo)}${offlineAgo}离线`}>
                 管理服务收不到这台设备的上报，下面是它最后上报的状态。设备重新连上之前，不能从这里探测、固定或选择节点。Agent
                 如果还在运行，会继续在本地探测和切换，重新连上后再同步。
+              </Notice>
+            )}
+            {singboxDown && (
+              <Notice tone="crit" title="本机的 sing-box 没有起来">
+                Agent 在线，但它管的 <span className="nowrap">sing-box</span> 启动失败：{d.singboxError}
+                。起来之前，这台设备上的分组切换都不会生效；Agent 会隔一会儿自动重试。
               </Notice>
             )}
             {oldSingbox && (
@@ -145,7 +153,7 @@ function DeviceBody({ d, c, rts, now }: BodyProps) {
                 在分组里勾选这台设备后，Agent 才会开始探测和切换。
               </EmptyState>
             )}
-            {groups.length > 0 && <Snippet d={d} groups={groups} c={c} />}
+            {groups.length > 0 && <Snippet d={d} />}
           </div>
 
           <div className={page.stack}>
@@ -544,27 +552,46 @@ function CandidateTable({ g, rt, c }: Omit<PanelProps, 'd'>) {
   )
 }
 
-function Snippet({ d, groups, c }: { d: Device; groups: Group[]; c: Catalog }) {
-  const code = toJson(buildSnippet({ device: d, groups, nodes: c.nodes }))
-  const external = externalRuleSets(groups)
+/**
+ * 这台设备实际会拿到的整份 sing-box 配置。
+ *
+ * 内容由服务端用真正下发时同一个生成函数算出来，节点密码那类字段只在服务端有，
+ * 前端拼不出来。密钥位置是占位符——真正的 Clash API 密钥由 Agent 在本机生成。
+ */
+function Snippet({ d }: { d: Device }) {
+  const preview = useConfigPreview({ deviceId: d.id })
+  const built = preview.data
   return (
     <Section
       id="snippet"
-      title="sing-box 配置片段"
-      description="Agent 会把这些内容合并进设备的 sing-box 配置；密码和 Clash API 密钥由 Agent 在本机生成。节点本身的出站配置保持不变。"
+      title="sing-box 配置"
+      description="Agent 在本机生成这份配置，节点出站和安全密钥都由它管；这里看到的是内容预览。"
     >
       <div className={page.stackSm}>
-        {external.length > 0 && (
-          <Notice tone="warn" title="需要先定义规则集">
-            {keepNames(`${joinZh(external)} 要先在这台设备的 sing-box 配置里定义好，否则合并后的配置会加载失败。`)}
+        {built && built.warnings.length > 0 && (
+          <Notice tone="warn" title={built.warnings.length === 1 ? '有一处没有生成' : '有几处没有生成'}>
+            {built.warnings.join('')}
           </Notice>
         )}
         <details className={s.details}>
           <summary>
             <ChevronDown aria-hidden />
-            查看配置片段
+            查看完整配置
           </summary>
-          <CodeBlock code={code} title={`${d.name} 的配置片段`} label={`${d.name} 的 sing-box 配置片段`} maxHeight={480} />
+          {preview.isPending ? (
+            <p className={s.previewNote}>正在生成配置…</p>
+          ) : preview.isError ? (
+            <Notice tone="crit" title="生成配置失败">
+              {errorMessage(preview.error)}
+            </Notice>
+          ) : built ? (
+            <CodeBlock
+              code={toJson(built.config)}
+              title={`${d.name} 的 sing-box 配置`}
+              label={`${d.name} 的 sing-box 配置`}
+              maxHeight={480}
+            />
+          ) : null}
         </details>
       </div>
     </Section>
@@ -583,9 +610,19 @@ function DeviceInfo({ d, now }: { d: Device; now: number }) {
             {osText(d)}
           </dd>
           <dt>sing-box</dt>
-          <dd>{d.singboxVersion}</dd>
+          <dd>{d.singboxVersion || '版本未知'}</dd>
           <dt>Agent</dt>
           <dd>{d.agentVersion}</dd>
+          <dt>本机代理</dt>
+          <dd>
+            {d.proxyListen ? (
+              <>
+                <span className="mono">{d.proxyListen}</span>，HTTP 和 SOCKS5 共用
+              </>
+            ) : (
+              'sing-box 还没起来'
+            )}
+          </dd>
           <dt>Clash API</dt>
           <dd className="mono">{d.clashApi}</dd>
           <dt>探测入站</dt>

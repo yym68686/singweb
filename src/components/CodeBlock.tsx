@@ -1,32 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, CircleAlert, Copy } from 'lucide-react'
 import { Button } from './Button'
+import { COPY_KEYS, copyText } from '../lib/clipboard'
 import { cx } from '../lib/cx'
 import s from './CodeBlock.module.css'
-
-const COPY_KEYS = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘C' : 'Ctrl+C'
-
-/**
- * 写入剪贴板。用 http 加内网 IP 打开管理服务时浏览器不提供 Clipboard API，
- * 这时改为选中文字再执行复制命令；还是不行就保留选中，让用户自己按快捷键。
- */
-async function copyText(text: string, source: HTMLElement): Promise<boolean> {
-  if (navigator.clipboard) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return true
-    } catch {
-      // 例如用户拒绝了剪贴板权限，下面换一种方式
-    }
-  }
-  const selection = getSelection()
-  selection?.selectAllChildren(source)
-  if (document.execCommand('copy')) {
-    selection?.removeAllRanges()
-    return true
-  }
-  return false
-}
 
 interface CodeBlockProps {
   code: string
@@ -37,10 +14,12 @@ interface CodeBlockProps {
   className?: string
   /** 限制高度，超出后滚动 */
   maxHeight?: number
+  /** 长行折行显示而不是横向滚动，给要整条核对的单行命令用 */
+  wrap?: boolean
 }
 
 /** 原样显示的配置或命令，带复制按钮；复制成功后按钮短暂显示“已复制” */
-export function CodeBlock({ code, title, label, copyLabel = '复制', className, maxHeight }: CodeBlockProps) {
+export function CodeBlock({ code, title, label, copyLabel = '复制', className, maxHeight, wrap }: CodeBlockProps) {
   const pre = useRef<HTMLPreElement>(null)
   const [copied, setCopied] = useState<{ code: string; ok: boolean } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -75,7 +54,7 @@ export function CodeBlock({ code, title, label, copyLabel = '复制', className,
           浏览器不允许写入剪贴板。已选中全部内容，按 {COPY_KEYS} 复制。
         </p>
       )}
-      <pre ref={pre} className={s.pre} tabIndex={0} aria-label={label} style={maxHeight ? { maxHeight } : undefined}>
+      <pre ref={pre} className={cx(s.pre, wrap && s.wrap)} tabIndex={0} aria-label={label} style={maxHeight ? { maxHeight } : undefined}>
         <code>{code}</code>
       </pre>
     </div>

@@ -189,6 +189,12 @@
   margin-bottom: var(--sp-3);
 }
 
+.previewNote {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-14);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .details > summary svg {
     transition: none;

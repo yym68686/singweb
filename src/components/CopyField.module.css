@@ -1,0 +1,49 @@
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-input);
+  background: var(--panel-2);
+}
+
+/* 链接很长，按任意字符折行，完整显示 */
+.value {
+  flex: 1;
+  min-width: 0;
+  padding-top: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.row > button {
+  flex: none;
+}
+
+.failed {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.failed svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--crit);
+}

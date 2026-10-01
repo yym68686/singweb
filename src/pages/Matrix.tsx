@@ -31,6 +31,7 @@ import { candidateIds } from '../lib/candidates'
 import { cx } from '../lib/cx'
 import { formatTime, joinZh, ms } from '../lib/format'
 import { expectStatusText, targetAddress, targetPassText } from '../lib/groupText'
+import { groupDeviceIds } from '../lib/groups'
 import { keepNames } from '../lib/keepNames'
 import { probeFailText, probeStageDone, protocolLabel, targetKindLabel } from '../lib/labels'
 import type { Tone } from '../lib/status'
@@ -71,7 +72,8 @@ function probedPairs(c: Catalog) {
   const set = new Set<string>()
   for (const g of c.groups.filter(probes)) {
     const nodeIds = candidateIds(g, c.nodes)
-    for (const d of g.deviceIds) for (const n of nodeIds) for (const tg of g.targetIds) set.add(`${d}|${n}|${tg}`)
+    for (const d of groupDeviceIds(g, c.devices))
+      for (const n of nodeIds) for (const tg of g.targetIds) set.add(`${d}|${n}|${tg}`)
   }
   return set
 }
@@ -247,7 +249,7 @@ function TargetMatrix({ c, tg, cells, rts, busy }: MatrixProps & { tg: Target })
       </EmptyState>
     )
   }
-  const deviceIds = new Set(groups.flatMap((g) => g.deviceIds))
+  const deviceIds = new Set(groups.flatMap((g) => groupDeviceIds(g, c.devices)))
   const nodeIds = new Set(groups.flatMap((g) => candidateIds(g, c.nodes)))
   const devices = c.devices.filter((d) => deviceIds.has(d.id))
   const nodes = c.nodes.filter((n) => nodeIds.has(n.id))

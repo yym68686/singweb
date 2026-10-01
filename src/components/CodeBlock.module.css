@@ -35,6 +35,12 @@
   white-space: pre;
 }
 
+/* 按任意字符折行：命令里的长链接没有空格可断 */
+.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .pre:focus-visible {
   outline-offset: -2px;
 }

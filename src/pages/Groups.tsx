@@ -11,6 +11,7 @@ import { candidateIds } from '../lib/candidates'
 import { cx } from '../lib/cx'
 import { formatFull, gapBefore, timeAgo } from '../lib/format'
 import { filterText, matchText, rulesText, switchText } from '../lib/groupText'
+import { groupDeviceIds } from '../lib/groups'
 import { keepNames } from '../lib/keepNames'
 import { allFailLabel, strategyLabel } from '../lib/labels'
 import page from '../styles/page.module.css'
@@ -155,10 +156,17 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
 }
 
 function DeviceStatus({ g, c, rts }: { g: Group; c: Catalog; rts: GroupRuntime[] }) {
-  if (!g.deviceIds.length) return <p className={page.sub}>没有应用到任何设备。</p>
+  const ids = groupDeviceIds(g, c.devices)
+  if (!ids.length) {
+    return (
+      <p className={page.sub}>
+        {g.deviceIds.length ? '选中的设备都已经删除了。' : '应用到所有设备，现在还没有设备接入。'}
+      </p>
+    )
+  }
   return (
     <ul className={s.deviceList}>
-      {g.deviceIds.map((id) => {
+      {ids.map((id) => {
         const d = c.device.get(id)
         const rt = rts.find((r) => r.deviceId === id && r.groupId === g.id)
         return (

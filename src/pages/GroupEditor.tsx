@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useBeforeUnload, useBlocker, useNavigate, useParams } from 'react-router'
 import {
   ArrowDown,
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useCatalog, type Catalog } from '../api/catalog'
 import { ApiError, errorMessage } from '../api/errors'
-import { useDeleteGroup, useSaveGroup, useSaveTarget } from '../api/hooks'
+import { useConfigPreview, useDeleteGroup, useSaveGroup, useSaveTarget } from '../api/hooks'
 import type {
   AllFailAction,
   Device,
@@ -54,17 +54,19 @@ import { matchesFilter } from '../lib/candidates'
 import { cx } from '../lib/cx'
 import { duration, gapBefore, joinZh } from '../lib/format'
 import { matchText, targetAddress, targetPassText } from '../lib/groupText'
+import { groupDeviceIds, isCatchAll } from '../lib/groups'
 import { keepNames } from '../lib/keepNames'
 import {
   candidateModeLabel,
   platformLabel,
   protocolLabel,
   selectionLabel,
+  singboxText,
   sniffProtocolLabel,
   targetKindHint,
   targetKindLabel,
 } from '../lib/labels'
-import { MIN_SINGBOX, buildSnippet, externalRuleSets, toJson, versionAtLeast } from '../lib/singbox'
+import { MIN_SINGBOX, singboxTooOld, toJson } from '../lib/singbox'
 import page from '../styles/page.module.css'
 import s from './GroupEditor.module.css'
 
@@ -102,6 +104,8 @@ export default function GroupEditor() {
 interface Draft {
   name: string
   selectorTag: string
+  /** 应用到所有设备（包括以后接入的）时，deviceIds 也留着，切回“选定的设备”还在 */
+  allDevices: boolean
   deviceIds: string[]
   /** 接管条件 */
   domains: string
@@ -139,6 +143,7 @@ function blankDraft(): Draft {
   return {
     name: '',
     selectorTag: '',
+    allDevices: true,
     deviceIds: [],
     domains: '',
     domainKeywords: '',
@@ -176,6 +181,7 @@ function toDraft(g?: Group): Draft {
     ...d,
     name: g.name,
     selectorTag: g.selectorTag,
+    allDevices: g.deviceIds.length === 0,
     deviceIds: g.deviceIds,
     domains: m.domains.join('\n'),
     domainKeywords: m.domainKeywords.join(', '),
@@ -237,7 +243,8 @@ function toInput(d: Draft): GroupInput {
   return {
     name: d.name,
     selectorTag: d.selectorTag,
-    deviceIds: d.deviceIds,
+    // 空列表就是所有设备
+    deviceIds: d.allDevices ? [] : d.deviceIds,
     match: {
       domains: splitList(d.domains),
       domainKeywords: splitList(d.domainKeywords),
@@ -293,6 +300,7 @@ function orderHint(strategy: Strategy, selection: Selection) {
 
 /** 草稿字段改动后，要一起清掉的服务端错误字段 */
 const errorKeys: Partial<Record<keyof Draft, string[]>> = {
+  allDevices: ['deviceIds'],
   domains: ['domains', 'match'],
   domainKeywords: ['match'],
   ipCidrs: ['ipCidrs', 'match'],
@@ -380,6 +388,14 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (save.isPending) return
+    // 设备列表空着交给服务端，会被当成所有设备，所以这一项只能在这里拦
+    if (!draft.allDevices && !draft.deviceIds.length) {
+      const msg = '至少选一台设备，或者改成应用到所有设备。'
+      setFormError(`没有保存：${msg}`)
+      focusNext.current = 'deviceIds'
+      setErrors({ deviceIds: msg })
+      return
+    }
     save.mutate(
       { id: group?.id ?? null, input },
       {
@@ -441,8 +457,12 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
     setRuleSaid(`已移除规则「${c.target.get(id)?.name ?? id}」`)
   }
 
-  const devices = draft.deviceIds.map((id) => c.device.get(id)).filter((d): d is Device => !!d)
-  const oldDevices = devices.filter((d) => !versionAtLeast(d.singboxVersion, MIN_SINGBOX))
+  const devices = draft.allDevices
+    ? c.devices
+    : draft.deviceIds.map((id) => c.device.get(id)).filter((d): d is Device => !!d)
+  /** 删除前，这个分组实际用在几台设备上 */
+  const appliedCount = group ? groupDeviceIds(group, c.devices).length : 0
+  const oldDevices = devices.filter((d) => singboxTooOld(d.singboxVersion))
   const match = normalizeMatch(input.match)
   const auto = draft.selection === 'auto'
 
@@ -498,32 +518,52 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                   </div>
                 </div>
 
-                <div data-field="deviceIds">
-                  <Fieldset
+                <div data-field="deviceIds" className={page.stack}>
+                  <Segmented
                     legend="应用到哪些设备"
-                    hint="离线的设备会在重新连上后收到这个分组。"
-                    error={errors.deviceIds}
-                  >
-                    <div className={s.cards}>
-                      {c.devices.map((d) => (
-                        <DeviceCheck
-                          key={d.id}
-                          d={d}
-                          checked={draft.deviceIds.includes(d.id)}
-                          onChange={(on) =>
-                            update({
-                              deviceIds: toggle(
-                                draft.deviceIds,
-                                d.id,
-                                on,
-                                c.devices.map((x) => x.id),
-                              ),
-                            })
-                          }
-                        />
-                      ))}
-                    </div>
-                  </Fieldset>
+                    className={s.modes}
+                    value={draft.allDevices ? 'all' : 'some'}
+                    options={[
+                      { value: 'all', label: '所有设备' },
+                      { value: 'some', label: '选定的设备' },
+                    ]}
+                    onChange={(v) => update({ allDevices: v === 'all' })}
+                  />
+                  {draft.allDevices ? (
+                    <p className={s.summary}>
+                      {c.devices.length
+                        ? `现在的 ${c.devices.length} 台设备和以后接入的设备都会用上这个分组。`
+                        : '现在还没有设备。设备接入后会自动用上这个分组。'}
+                    </p>
+                  ) : c.devices.length ? (
+                    <Fieldset legend="设备" hint="离线的设备会在重新连上后收到这个分组。" error={errors.deviceIds}>
+                      <div className={s.cards}>
+                        {c.devices.map((d) => (
+                          <DeviceCheck
+                            key={d.id}
+                            d={d}
+                            checked={draft.deviceIds.includes(d.id)}
+                            onChange={(on) =>
+                              update({
+                                deviceIds: toggle(
+                                  draft.deviceIds,
+                                  d.id,
+                                  on,
+                                  c.devices.map((x) => x.id),
+                                ),
+                              })
+                            }
+                          />
+                        ))}
+                      </div>
+                    </Fieldset>
+                  ) : (
+                    <Fieldset legend="设备" error={errors.deviceIds}>
+                      <p className={s.summary}>
+                        还没有设备可选。先应用到所有设备，或者到<Link to="/devices">设备页</Link>接入设备后再来选。
+                      </p>
+                    </Fieldset>
+                  )}
                 </div>
                 {oldDevices.length > 0 && (
                   <Notice tone="warn" title={`sing-box 低于 ${MIN_SINGBOX}：${joinZh(oldDevices.map((d) => d.name))}`}>
@@ -536,7 +576,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
             <Section
               title="接管哪些流量"
               id="match"
-              description="符合条件的连接交给这个分组的 selector，其余流量不受影响。"
+              description="符合条件的连接交给这个分组的 selector，其余流量不受影响。一项都不设，就是兜底分组：别的分组没接管的流量都走它。"
             >
               <div className={cx(page.panel, s.body)}>
                 <div data-field="match">
@@ -663,7 +703,11 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                   </Fieldset>
                 </div>
                 <p className={s.summary}>
-                  {hasMatch(match) ? <>现在接管：{keepNames(matchText(match))}</> : '还没有设置接管条件。'}
+                  {hasMatch(match) ? (
+                    <>现在接管：{keepNames(matchText(match))}</>
+                  ) : (
+                    '没有设置接管条件，这是兜底分组：别的分组没接管的流量都走它。一台设备上只能有一个兜底分组。'
+                  )}
                 </p>
               </div>
             </Section>
@@ -855,7 +899,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                           field="toleranceMs"
                           label="延迟容差"
                           unit="ms"
-                          hint="新节点至少快这么多才切过去。0–1000。"
+                          hint="当前节点比最快的慢出这么多算「明显变慢」，连续两轮都如此才切过去。0–1000。"
                           min={0}
                           max={1000}
                           value={draft.toleranceMs}
@@ -968,7 +1012,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
         </div>
 
         <aside className={s.aside} aria-labelledby="preview-title">
-          <Preview input={input} devices={devices} c={c} groupId={group?.id} />
+          <Preview input={input} devices={devices} groupId={group?.id} />
         </aside>
       </div>
 
@@ -987,13 +1031,15 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
           onConfirm={onDelete}
         >
           <p>
-            {group.deviceIds.length ? (
+            {appliedCount ? (
               <>
-                {group.deviceIds.length} 台设备上的 selector <span className="mono">{keepNames(group.selectorTag)}</span>{' '}
-                会被移除，相关连接改由 <span className="nowrap">sing-box</span> 的默认出站处理。
+                {group.deviceIds.length ? `${appliedCount} 台设备` : '所有设备'}上的 selector{' '}
+                <span className="mono">{keepNames(group.selectorTag)}</span>{' '}
+                会被移除，
+                {isCatchAll(group.match) ? '其余流量改走全部节点，自动选择出口' : '这部分流量改走其余流量的出口'}。
               </>
             ) : (
-              '这个分组没有应用到任何设备。'
+              '这个分组现在没有用在任何设备上。'
             )}
           </p>
           <p>{group.selection === 'auto' ? '探测结果会一起删除，事件记录保留。' : '事件记录会保留。'}</p>
@@ -1039,14 +1085,14 @@ function Category({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function DeviceCheck({ d, checked, onChange }: { d: Device; checked: boolean; onChange: (on: boolean) => void }) {
-  const old = !versionAtLeast(d.singboxVersion, MIN_SINGBOX)
+  const old = singboxTooOld(d.singboxVersion)
   return (
     <Check
       card
       label={d.name}
       description={
         <>
-          <span className="mono">{d.hostname}</span>，{platformLabel[d.platform]}，<span className="nowrap">sing-box {d.singboxVersion}</span>
+          <span className="mono">{d.hostname}</span>，{platformLabel[d.platform]}，<span className="nowrap">{singboxText(d.singboxVersion)}</span>
         </>
       }
       aside={
@@ -1563,23 +1609,47 @@ function AddRuleDialog({ kind, c, taken, onAdd, onClose }: AddRuleDialogProps) {
 interface PreviewProps {
   input: GroupInput
   devices: Device[]
-  c: Catalog
   groupId?: string
 }
 
-function Preview({ input, devices, c, groupId }: PreviewProps) {
+/**
+ * 停手一会儿之后再给出新值。配置预览每次都要服务端算一遍，
+ * 跟着按键发请求既吵又没必要。
+ */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return settled
+}
+
+/**
+ * 这台设备实际会拿到的整份 sing-box 配置，由服务端用真正下发时同一个
+ * 生成函数算出来——节点的出站只在服务端有，前端拼不出来。
+ */
+function Preview({ input, devices, groupId }: PreviewProps) {
   const [picked, setPicked] = useState<string>()
   const device = devices.find((d) => d.id === picked) ?? devices[0]
-  // 和服务端一样整理一遍再生成片段
-  const asGroup: Group = {
-    ...input,
-    id: groupId ?? 'new',
-    selectorTag: input.selectorTag.trim() || 'group-out',
-    match: normalizeMatch(input.match),
-    targetIds: input.targetIds.filter((id) => c.target.has(id)),
-    updatedAt: '',
-  }
-  const external = externalRuleSets([asGroup])
+
+  // 用户每敲一个字都会变，直接发请求太吵；停手之后再算
+  const draft = useDebounced(
+    useMemo(
+      () => ({
+        ...input,
+        id: groupId,
+        selectorTag: input.selectorTag.trim() || 'group-out',
+        match: normalizeMatch(input.match),
+      }),
+      [input, groupId],
+    ),
+    400,
+  )
+
+  // 草稿还没入库，交给服务端按保存时的同一套规则整理（筛选候选、清理不存在的目标）
+  const preview = useConfigPreview({ deviceId: device?.id ?? null, group: draft })
+  const built = preview.data
 
   return (
     <div className={s.preview}>
@@ -1588,12 +1658,13 @@ function Preview({ input, devices, c, groupId }: PreviewProps) {
           配置预览
         </h2>
         <p className={page.sub}>
-          保存后，Agent 会把这些内容合并进设备的 <span className="nowrap">sing-box</span> 配置。这里只包含这个分组。
+          这台设备的整份 <span className="nowrap">sing-box</span> 配置：这个分组保存后会变成里面的 selector
+          和路由规则。密钥位置是占位符，真正的密钥由 Agent 在本机生成。
         </p>
       </div>
       {!device ? (
         <p className={s.previewEmpty}>
-          选择设备后，这里会显示要合并进它的 <span className="nowrap">sing-box</span> 配置。
+          选择设备后，这里会显示它拿到的 <span className="nowrap">sing-box</span> 配置。
         </p>
       ) : (
         <>
@@ -1611,23 +1682,30 @@ function Preview({ input, devices, c, groupId }: PreviewProps) {
             </Field>
           )}
           {/* 没有接管条件时生成的规则会匹配全部流量，不能拿来当预览 */}
-          {hasMatch(asGroup.match) ? (
+          {!hasMatch(draft.match) ? (
+            <p className={s.previewEmpty}>
+              兜底分组不生成路由规则：「{device.name}」上别的分组没接管的流量，都交给这个分组的 selector（
+              <span className="mono">route.final</span>）。
+            </p>
+          ) : preview.isError ? (
+            <Notice tone="crit" title="生成配置失败">
+              {errorMessage(preview.error)}
+            </Notice>
+          ) : built ? (
             <>
               <CodeBlock
-                code={toJson(buildSnippet({ device, groups: [asGroup], nodes: c.nodes }))}
+                code={toJson(built.config)}
                 label={`${device.name} 的 sing-box 配置预览`}
                 className={s.code}
               />
-              {external.length > 0 && (
-                <Notice tone="warn" title="需要先定义规则集">
-                  {`${joinZh(external)} 要先在「${device.name}」的 sing-box 配置里定义好，否则合并后的配置会加载失败。`}
+              {built.warnings.length > 0 && (
+                <Notice tone="warn" title={built.warnings.length === 1 ? '有一处没有生成' : '有几处没有生成'}>
+                  {built.warnings.join('')}
                 </Notice>
               )}
             </>
           ) : (
-            <p className={s.previewEmpty}>
-              设置了接管条件后，这里会显示要合并进「{device.name}」的 <span className="nowrap">sing-box</span> 配置。
-            </p>
+            <p className={s.previewEmpty}>正在生成配置…</p>
           )}
         </>
       )}

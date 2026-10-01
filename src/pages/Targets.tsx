@@ -39,6 +39,7 @@ import { candidateIds } from '../lib/candidates'
 import { cx } from '../lib/cx'
 import { gapBefore, joinZh } from '../lib/format'
 import { expectStatusText, targetAddress } from '../lib/groupText'
+import { groupDeviceIds } from '../lib/groups'
 import { keepNames } from '../lib/keepNames'
 import { probeFailText, targetKindHint, targetKindLabel } from '../lib/labels'
 import type { Tone } from '../lib/status'
@@ -251,7 +252,7 @@ function Recent({ tg, c, cells }: { tg: Target; c: Catalog; cells?: ProbeCell[] 
   for (const g of usersOf(c, tg.id)) {
     if (g.selection !== 'auto') continue
     const nodeIds = candidateIds(g, c.nodes)
-    for (const d of g.deviceIds)
+    for (const d of groupDeviceIds(g, c.devices))
       for (const n of nodeIds) if (c.device.get(d)?.online && c.node.get(n)?.enabled) pairs.add(`${d}|${n}`)
   }
   if (!pairs.size) return <span className={t.sub}>没有在探测</span>

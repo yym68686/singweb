@@ -33,11 +33,14 @@ export function matchParts(m: TrafficMatch) {
   }
 }
 
-/** “SSH 协议或端口 22、2222”“域名 pg-tokyo.example.net，并且端口 5432” */
+/**
+ * “SSH 协议或端口 22、2222”“域名 pg-tokyo.example.net，并且端口 5432”。
+ * 一项都没设的是兜底分组，接管别的分组没接管的流量。
+ */
 export function matchText(m: TrafficMatch): string {
   const { dest, proto, process } = matchParts(m)
   const parts = [dest, proto, process].filter((x): x is string => !!x)
-  return parts.length ? parts.join('，并且') : '没有设置'
+  return parts.length ? parts.join('，并且') : '其余所有流量（兜底）'
 }
 
 /** “地区是香港或东京，名称不含 IPLC 的节点”；没有条件时是“全部节点” */
@@ -115,7 +118,7 @@ export function switchText(p: SwitchFields): string {
     `连续成功 ${p.recoverThreshold} 轮恢复`,
   ]
   if (p.strategy === 'priority') parts.push(p.failback ? '更靠前的节点恢复后切回' : '恢复后不切回')
-  else parts.push(`新节点快 ${p.toleranceMs} ms 以上才换`)
+  else parts.push(`当前节点慢 ${p.toleranceMs} ms 以上、连续两轮才换`)
   parts.push(p.interruptExisting ? '切换时断开已有连接' : '已有连接不断开')
   return parts.join('，')
 }

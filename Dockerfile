@@ -21,9 +21,12 @@ COPY tsconfig.json vite.config.ts index.html ./
 COPY src ./src
 COPY shared ./shared
 COPY server ./server
+# agent/ 不是运行时代码，但安装路由要把 agent/src 和 agent/package.json
+# 打成一个 tarball 发给设备，所以构建和运行两段都得有它
+COPY agent ./agent
 
 # 类型检查放进构建里：检查不过就不该产出镜像，而不是等跑起来才发现
-RUN npx tsc --noEmit -p . && npx tsc --noEmit -p server && npm run build
+RUN npx tsc --noEmit -p . && npx tsc --noEmit -p server && npx tsc --noEmit -p agent && npm run build
 
 # ---------------------------------------------------------------- 运行
 
@@ -47,6 +50,8 @@ COPY --from=build /app/dist ./dist
 # 相对路径的 import 决定了两边的目录结构必须保持原样
 COPY server ./server
 COPY shared ./shared
+# 安装路由现打 tarball 用的，见上
+COPY agent ./agent
 
 # alpine 自带的 node 用户是现成的，不用 root 跑
 RUN chown -R node:node /app

@@ -12,6 +12,7 @@ import {
   Pin,
   PinOff,
   Server,
+  ShieldAlert,
   ShieldCheck,
   Split,
   TriangleAlert,
@@ -68,6 +69,7 @@ export const eventIcon: Record<EventKind, LucideIcon> = {
   unpin: PinOff,
   'device-offline': WifiOff,
   'device-online': Wifi,
+  'device-rejected': ShieldAlert,
   'group-changed': Split,
   'node-changed': Server,
 }

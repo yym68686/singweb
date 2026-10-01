@@ -3,7 +3,7 @@
  * 字段含义与 docs/api.md 一致；时间一律为 ISO 8601 字符串。
  */
 
-export type Platform = 'macos' | 'linux'
+export type Platform = 'macos' | 'linux' | 'windows'
 
 /** 运行 sing-box 和 singweb Agent 的一台设备 */
 export interface Device {
@@ -11,7 +11,7 @@ export interface Device {
   name: string
   hostname: string
   platform: Platform
-  /** macOS 上是系统版本号（15.6），Linux 上是 os-release 里的发行版和版本（Ubuntu 24.04） */
+  /** macOS 上是系统版本号（15.6），Linux 上是 os-release 里的发行版和版本（Ubuntu 24.04），Windows 上是内核版本 */
   osVersion: string
   agentVersion: string
   singboxVersion: string
@@ -24,6 +24,10 @@ export interface Device {
   probeInbound: string
   /** Agent 写入阻断规则集等文件的目录 */
   dataDir: string
+  /** 本机代理（HTTP 和 SOCKS5）的监听地址，由 Agent 管理的 sing-box 提供；空表示 sing-box 还没起来 */
+  proxyListen: string
+  /** 本机 sing-box 起不来的原因，比如端口被占、找不到程序；null 表示正常 */
+  singboxError: string | null
   note?: string
 }
 
@@ -40,14 +44,17 @@ export interface ProxyNode {
   region: string
   /** 停用后不参与任何分组，也不再探测 */
   enabled: boolean
+  /** 来源的名字，显示用 */
   source: string
+  /** 来自哪个订阅，手动添加的节点为 null */
+  sourceId: string | null
 }
 
 /** 一个订阅地址；节点页按来源分组显示，也用来导入节点 */
 export interface NodeSource {
   id: string
   name: string
-  /** 完整的订阅链接，含 token。只在管理和设备之间传递 */
+  /** 完整的订阅链接，含 token。只存在管理服务的数据库里，设备不知道它 */
   url: string
   enabled: boolean
   /** 最近一次拉取的结果 */
@@ -56,8 +63,6 @@ export interface NodeSource {
   /** 最近一次拉取解析出的节点数 */
   nodeCount: number
   createdAt: string
-  /** 点了「立即刷新」，还没被设备领走 */
-  refreshRequested: boolean
 }
 
 /** 分组规则的类型，也就是探测目标的类型 */
@@ -155,7 +160,9 @@ export interface Group {
   id: string
   name: string
   selectorTag: string
+  /** 用在哪些设备上；空数组表示所有设备，包括以后接入的 */
   deviceIds: string[]
+  /** 一项条件都没设的是兜底分组，接管别的分组没接管的流量 */
   match: TrafficMatch
   candidates: Candidates
   selection: Selection
@@ -329,6 +336,8 @@ export type EventKind =
   | 'unpin'
   | 'device-offline'
   | 'device-online'
+  /** 有人拿着别的设备的 id 和密钥想要接入，被拒了 */
+  | 'device-rejected'
   | 'group-changed'
   | 'node-changed'
 
@@ -366,6 +375,7 @@ export interface EventPage {
 export type UpdateScope =
   | 'devices'
   | 'nodes'
+  | 'sources'
   | 'targets'
   | 'groups'
   | 'runtimes'
@@ -375,7 +385,14 @@ export type UpdateScope =
 /** 服务端推送：告诉前端哪些数据变了 */
 export type LiveMessage = { type: 'update'; scopes: UpdateScope[] } | { type: 'reset' }
 
-export type Role = 'admin' | 'member'
+export type Role = 'admin' | 'viewer'
+
+/** 一份生成好的 sing-box 配置。密钥位置是占位符，不是真值 */
+export interface ConfigPreview {
+  config: Record<string, unknown>
+  /** 生成时跳过的内容，写给人看 */
+  warnings: string[]
+}
 
 /** 登录的账号。密码只在登录请求里出现，服务端从不回传 */
 export interface User {

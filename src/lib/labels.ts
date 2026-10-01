@@ -17,12 +17,21 @@ import type {
   TargetKind,
 } from '../api/types'
 
-export const platformLabel: Record<Platform, string> = { macos: 'macOS', linux: 'Linux' }
+export const platformLabel: Record<Platform, string> = { macos: 'macOS', linux: 'Linux', windows: 'Windows' }
 
-/** “macOS 15.6”“Ubuntu 24.04”：Linux 的发行版名称已经说明了系统 */
+/**
+ * “macOS 15.6”“Ubuntu 24.04”“Windows 11（10.0.26100）”。Agent 报的一般已经带着系统名，
+ * 只有光秃秃一个版本号时才补上
+ */
 export function osText(d: Pick<Device, 'platform' | 'osVersion'>): string {
-  if (!d.osVersion) return platformLabel[d.platform]
-  return d.platform === 'macos' ? `macOS ${d.osVersion}` : d.osVersion
+  const version = d.osVersion.trim()
+  if (!version) return platformLabel[d.platform]
+  return /^\d/.test(version) ? `${platformLabel[d.platform]} ${version}` : version
+}
+
+/** 刚接入、sing-box 没起来时还不知道版本 */
+export function singboxText(version: string): string {
+  return version ? `sing-box ${version}` : 'sing-box 版本未知'
 }
 
 export const protocolLabel: Record<NodeProtocol, string> = {
@@ -134,6 +143,7 @@ export const eventKindLabel: Record<EventKind, string> = {
   unpin: '取消固定',
   'device-offline': '设备离线',
   'device-online': '设备上线',
+  'device-rejected': '接入被拒',
   'group-changed': '分组变更',
   'node-changed': '节点变更',
 }

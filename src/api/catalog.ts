@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { appliesTo } from '../lib/groups'
 import { useDevices, useGroups, useNodes, useSources, useTargets } from './hooks'
 import { DIRECT, type Device, type Group, type NodeSource, type ProxyNode, type Target } from './types'
 
@@ -56,6 +57,6 @@ export function outletName(id: string | null | undefined, c: Pick<Catalog, 'node
   return c.node.get(id)?.tag ?? id
 }
 
-/** 应用到某台设备的分组 */
+/** 应用到某台设备的分组，包括应用到所有设备的 */
 export const groupsOf = (c: Pick<Catalog, 'groups'>, deviceId: string) =>
-  c.groups.filter((g) => g.deviceIds.includes(deviceId))
+  c.groups.filter((g) => appliesTo(g, deviceId))

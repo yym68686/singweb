@@ -41,3 +41,102 @@
   height: 14px;
   color: var(--warn);
 }
+
+.down {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.down svg {
+  width: 14px;
+  height: 14px;
+  color: var(--crit);
+}
+
+/* 接入对话框 */
+.enroll {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.os {
+  justify-self: start;
+}
+
+.hint {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  line-height: 1.6;
+}
+
+.hint code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+
+/* 空着的时候也占位：内容在里面换，读屏软件才念得出来 */
+.enrollState {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-13);
+  line-height: 1.6;
+}
+
+.enrollState:not(:empty) {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--panel-2);
+}
+
+.enrollState > svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  color: var(--ink-2);
+}
+
+.good > svg {
+  color: var(--good);
+}
+
+.crit > svg {
+  color: var(--crit);
+}
+
+.enrollText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.joinedTitle {
+  font-weight: 600;
+}
+
+.retrying {
+  display: block;
+  color: var(--ink-2);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

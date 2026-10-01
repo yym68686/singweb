@@ -98,14 +98,6 @@
   gap: 4px 8px;
 }
 
-/* 订阅链接可能很长，截断显示，完整内容在 title 里 */
-.sourceUrl {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--fs-12);
-  overflow-wrap: anywhere;
-}
-
 .sourceMeta {
   margin: 0;
   color: var(--ink-2);
@@ -124,4 +116,73 @@
   align-items: center;
   gap: var(--sp-2);
   margin-top: 2px;
+}
+
+/* 对话框里的几块内容之间留出和表单一样的间距 */
+.dialogForm {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+/* 设置对话框里的订阅地址，标签和说明跟表单字段一个样 */
+.urlField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.urlLabel {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.urlHint {
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+
+.toggleBlock {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.toggleText {
+  font-weight: 600;
+}
+
+/* 开关的结果写在对话框里，提示条会被对话框的遮罩挡住 */
+.toggleResult {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+
+.toggleResult svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--good);
+}
+
+.toggleResultCrit svg {
+  color: var(--crit);
+}
+
+.subscription {
+  display: grid;
+  gap: var(--sp-3);
 }

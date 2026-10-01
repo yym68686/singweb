@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import {
+  Check,
+  CircleAlert,
   CircleCheck,
   CircleDashed,
   CircleMinus,
@@ -10,22 +12,29 @@ import {
   Plus,
   RotateCw,
   Server,
+  Settings2,
   Trash2,
   WifiOff,
   type LucideIcon,
 } from 'lucide-react'
 import { outletName, useCatalog, type Catalog } from '../api/catalog'
+import { absoluteApiUrl } from '../api/client'
 import { errorMessage } from '../api/errors'
 import {
   useDeleteSource,
   useRefreshSource,
+  useResetSubscription,
   useRuntimes,
+  useMe,
+  useNow,
   useSaveSource,
+  useSubscription,
   useUpdateNode,
 } from '../api/hooks'
 import type { GroupRuntime, HealthState, NodeSource, ProxyNode } from '../api/types'
 import { Badge, ToneIcon } from '../components/Badge'
 import { Button } from '../components/Button'
+import { CopyField } from '../components/CopyField'
 import { TableScroll } from '../components/DataTable'
 import { ConfirmDialog, Dialog } from '../components/Dialog'
 import { Field, Switch, TextInput } from '../components/Form'
@@ -34,7 +43,7 @@ import { EmptyState, Loadable } from '../components/States'
 import { useToast } from '../components/Toast'
 import { candidateIds } from '../lib/candidates'
 import { cx } from '../lib/cx'
-import { joinZh, maskUrl, timeAgo } from '../lib/format'
+import { joinZh, timeAgo } from '../lib/format'
 import { keepNames } from '../lib/keepNames'
 import { allFailLabel, protocolLabel } from '../lib/labels'
 import type { Tone } from '../lib/status'
@@ -45,13 +54,14 @@ import s from './Nodes.module.css'
 export default function Nodes() {
   const catalog = useCatalog()
   const runtimes = useRuntimes()
+  const me = useMe()
   const [importing, setImporting] = useState(false)
   const data = catalog.data && runtimes.data ? { c: catalog.data, rts: runtimes.data } : undefined
   return (
     <>
       <PageHeader
         title="节点"
-        description="设备上 sing-box 配置里的代理出站。停用的节点不参与任何分组，Agent 也不再探测它。节点可以订阅进来，也可以改 sing-box 配置让 Agent 下次上报时带上来。"
+        description="singweb 把所有订阅里的节点拉下来、去重后汇总成一个节点池，分组从这里挑节点。设备拿到的是汇总之后的结果，不会看到上游的订阅地址。停用的节点不参与任何分组。"
       />
       <Loadable
         data={data}
@@ -63,20 +73,40 @@ export default function Nodes() {
       >
         {({ c, rts }) => (
           <div className={page.stack}>
+            <SourcesCard c={c} onImport={() => setImporting(true)} />
+            {me.data?.role === 'admin' && <SubscriptionCard />}
             {c.nodes.length ? (
               <NodeTable c={c} rts={rts} />
             ) : (
-              <EmptyState icon={Server} title="还没有节点">
-                添加一个订阅地址，Agent 下一轮上报时会把它解析出的节点带上来。
+              <EmptyState
+                icon={Server}
+                title="节点池是空的"
+                action={
+                  c.sources.length === 0 && (
+                    <Button variant="primary" icon={Plus} onClick={() => setImporting(true)}>
+                      导入节点
+                    </Button>
+                  )
+                }
+              >
+                {emptyPoolText(c.sources)}
               </EmptyState>
             )}
-            <SourcesCard c={c} onImport={() => setImporting(true)} />
             {importing && <ImportDialog onClose={() => setImporting(false)} />}
           </div>
         )}
       </Loadable>
     </>
   )
+}
+
+/** 节点池为空时说清楚是哪一种空：没有订阅、订阅都停了、还是拉取失败 */
+function emptyPoolText(sources: NodeSource[]): string {
+  if (!sources.length) return '添加一个订阅地址，singweb 会马上拉取并把节点解析到这里。'
+  const enabled = sources.filter((src) => src.enabled)
+  if (!enabled.length) return '订阅都停用了，停用的订阅的节点不在节点池里。打开任意一个订阅就会马上拉取。'
+  if (enabled.every((src) => src.lastError)) return '订阅都拉取失败了，原因写在上面的订阅里。'
+  return '订阅里没有解析出能用的节点。'
 }
 
 /** 健康列按结论把设备分几堆 */
@@ -181,18 +211,22 @@ function impactOf(n: ProxyNode, c: Catalog, rts: GroupRuntime[]) {
 /**
  * 订阅来源。
  *
- * 取订阅的一直是设备上的 Agent，不是这台服务器——订阅链接和 token 留在服务端，
- * 由 Agent 在下一轮 bootstrap 时领走，解析出来的节点再报回来。所以这里点「立即刷新」
- * 之后页面上不会立刻有变化，得等设备那一轮跑完。
+ * 拉订阅的是这台服务器，不是设备：添加、立即刷新、重新启用都会当场拉一次，
+ * 接口返回时节点池就已经是新的了。之后每 6 小时自动拉一次。
  */
 function SourcesCard({ c, onImport }: { c: Catalog; onImport: () => void }) {
   const refresh = useRefreshSource()
   const toast = useToast()
+  const [editing, setEditing] = useState<string | null>(null)
   const { sources } = c
+  const current = editing ? c.source.get(editing) : undefined
 
   const doRefresh = (src: NodeSource) =>
     refresh.mutate(src.id, {
-      onSuccess: () => toast(`已让设备重新拉取「${src.name}」，结果要等下一轮上报`),
+      onSuccess: (r) =>
+        r.ok
+          ? toast(`「${src.name}」已刷新，解析出 ${r.nodeCount} 个节点`)
+          : toast(`拉取「${src.name}」失败：${r.error ?? '原因未知'}。节点池里还是上次的 ${r.nodeCount} 个节点`, 'crit'),
       onError: (e) => toast(errorMessage(e), 'crit'),
     })
 
@@ -209,33 +243,18 @@ function SourcesCard({ c, onImport }: { c: Catalog; onImport: () => void }) {
       </header>
       <div className={page.panelBody}>
         {sources.length === 0 ? (
-          <p className={page.sub}>
-            还没有订阅。添加一个订阅地址，设备上的 Agent 会解析它并把节点报上来。
-          </p>
+          <p className={page.sub}>还没有订阅。添加一个订阅地址，singweb 会马上拉取并解析出节点。</p>
         ) : (
           <ul className={s.sources}>
             {sources.map((src) => (
               <li key={src.id} className={cx(s.source, !src.enabled && s.sourceOff)}>
                 <div className={s.sourceHead}>
                   <span className={t.name}>{src.name}</span>
-                  {!src.enabled && (
-                    <Badge tone="offline" icon={CircleMinus}>
-                      已停用
-                    </Badge>
-                  )}
-                  {src.enabled && src.refreshRequested && (
-                    <Badge tone="warn" icon={RotateCw}>
-                      等待设备拉取
-                    </Badge>
-                  )}
+                  <SourceBadge src={src} />
                 </div>
-                <p className={cx(s.sourceUrl, 'mono')} title={maskUrl(src.url)}>
-                  {maskUrl(src.url)}
-                </p>
+                <CopyField value={src.url} label={`复制「${src.name}」的订阅地址`} />
                 <p className={s.sourceMeta}>
-                  {src.nodeCount ? `${src.nodeCount} 个节点` : '还没有节点'}
-                  {src.lastFetchedAt && <>，上次拉取 {timeAgo(src.lastFetchedAt)}</>}
-                  {src.lastError && <span className={s.sourceError}>拉取失败：{src.lastError}</span>}
+                  <SourceMeta src={src} />
                 </p>
                 <div className={s.sourceActions}>
                   <Button
@@ -243,54 +262,109 @@ function SourcesCard({ c, onImport }: { c: Catalog; onImport: () => void }) {
                     variant="ghost"
                     icon={RotateCw}
                     disabled={!src.enabled}
+                    title={src.enabled ? undefined : '订阅停用中，先在设置里打开'}
                     pending={refresh.isPending && refresh.variables === src.id}
                     onClick={() => doRefresh(src)}
                   >
                     立即刷新
                   </Button>
-                  <SourceDialog c={c} source={src} />
+                  <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setEditing(src.id)}>
+                    设置
+                  </Button>
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+      {/* 对话框拿的是缓存里最新的那份：开关一拨，列表刷新，对话框里看到的也跟着变 */}
+      {current && <EditDialog c={c} source={current} onClose={() => setEditing(null)} />}
     </section>
   )
 }
 
-/** 修改已有订阅：改名、换地址、启用停用、删除 */
-function SourceDialog({ c, source }: { c: Catalog; source: NodeSource }) {
-  const [open, setOpen] = useState(false)
+function SourceBadge({ src }: { src: NodeSource }) {
+  if (!src.enabled) {
+    return (
+      <Badge tone="offline" icon={CircleMinus}>
+        已停用
+      </Badge>
+    )
+  }
+  if (src.lastError) {
+    return (
+      <Badge tone="crit" icon={CircleAlert}>
+        拉取失败
+      </Badge>
+    )
+  }
+  if (!src.lastFetchedAt) {
+    return (
+      <Badge tone="neutral" icon={CircleDashed}>
+        还没拉取
+      </Badge>
+    )
+  }
+  return null
+}
+
+function SourceMeta({ src }: { src: NodeSource }) {
+  useNow(30_000)
+  const fetched = src.lastFetchedAt ? `，上次拉取 ${timeAgo(src.lastFetchedAt)}` : ''
+  if (!src.enabled) {
+    return <>停用中，它的 {src.nodeCount} 个节点不在节点池里</>
+  }
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-        设置
-      </Button>
-      {open && <EditDialog c={c} source={source} onClose={() => setOpen(false)} />}
+      {src.nodeCount ? `${src.nodeCount} 个节点` : '没有节点'}
+      {fetched}
+      {src.lastError && <span className={s.sourceError}>拉取失败：{src.lastError}</span>}
     </>
   )
 }
 
+/** 修改已有订阅：改名、启用停用、删除。开关即时生效，对话框不关 */
 function EditDialog({ c, source, onClose }: { c: Catalog; source: NodeSource; onClose: () => void }) {
   const save = useSaveSource()
   const remove = useDeleteSource()
   const toast = useToast()
   const [name, setName] = useState(source.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // 对话框盖在页面上，提示条会被遮罩挡住，开关的结果写在开关下面
+  const [result, setResult] = useState<{ tone: 'good' | 'crit'; text: string } | null>(null)
 
-  const usedNodes = c.nodes.filter((n) => n.source === source.name)
+  const usedNodes = c.nodes.filter((n) => n.sourceId === source.id)
   const inUse = usedNodes.filter((n) => c.groups.some((g) => candidateIds(g, c.nodes).includes(n.id)))
+  const toggling = save.isPending && save.variables?.enabled !== undefined
 
-  const apply = (patch: { name?: string; enabled?: boolean }) =>
+  const toggle = (enabled: boolean) => {
+    setResult(null)
     save.mutate(
-      { id: source.id, ...patch },
+      { id: source.id, enabled },
+      {
+        onSuccess: (src) => {
+          if (!enabled) {
+            setResult({ tone: 'good', text: `已停用。它的 ${src.nodeCount} 个节点移出了节点池，分组和设备配置里都不再有它们。` })
+          } else if (src.lastError) {
+            setResult({ tone: 'crit', text: `已启用，但这次没拉到：${src.lastError}` })
+          } else {
+            setResult({ tone: 'good', text: `已启用，刚拉取了一次，解析出 ${src.nodeCount} 个节点。` })
+          }
+        },
+        onError: (e) => setResult({ tone: 'crit', text: errorMessage(e) }),
+      },
+    )
+  }
+
+  const rename = () =>
+    save.mutate(
+      { id: source.id, name: name.trim() },
       {
         onSuccess: () => {
-          toast('已保存')
+          toast(`已改名为「${name.trim()}」`)
           onClose()
         },
-        onError: (e) => toast(errorMessage(e), 'crit'),
+        onError: (e) => setResult({ tone: 'crit', text: errorMessage(e) }),
       },
     )
 
@@ -306,38 +380,72 @@ function EditDialog({ c, source, onClose }: { c: Catalog; source: NodeSource; on
               删除订阅
             </Button>
             <Button variant="ghost" onClick={onClose}>
-              取消
+              关闭
             </Button>
             <Button
-              pending={save.isPending}
+              pending={save.isPending && save.variables?.name !== undefined}
               disabled={!name.trim() || name.trim() === source.name}
-              onClick={() => apply({ name: name.trim() })}
+              onClick={rename}
             >
               保存名称
             </Button>
           </>
         }
       >
-        <Field label="名称" hint="只用于在网页上区分，不影响节点本身">
-          {(a) => <TextInput {...a} value={name} maxLength={60} data-autofocus onChange={(e) => setName(e.target.value)} />}
-        </Field>
-        <Field
-          label="订阅地址"
-          hint="要换地址就重新导入一个，避免改动已有节点的来源。这里隐去了 token，实际存的还是完整链接"
-        >
-          {(a) => <TextInput {...a} value={maskUrl(source.url)} readOnly mono title={maskUrl(source.url)} />}
-        </Field>
-        <Switch
-          checked={source.enabled}
-          label={`启用订阅 ${source.name}`}
-          pending={save.isPending}
-          onChange={(v) => apply({ enabled: v })}
-        />
-        <p className={page.sub}>
-          {source.enabled
-            ? '停用后设备不再拉取这个订阅，已经导入的节点会保留，但要手动停用它们才会退出分组。'
-            : '现在不会拉取这个订阅。已经导入的节点还在节点列表里。'}
-        </p>
+        <div className={s.dialogForm}>
+          <Field label="名称" hint="只用于在网页上区分，不影响节点本身">
+            {(a) => (
+              <TextInput
+                {...a}
+                value={name}
+                maxLength={60}
+                data-autofocus
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && name.trim() && name.trim() !== source.name) rename()
+                }}
+              />
+            )}
+          </Field>
+          <div className={s.urlField}>
+            <span className={s.urlLabel}>订阅地址</span>
+            <CopyField value={source.url} label="复制订阅地址" />
+            <span className={s.urlHint}>要换地址就重新导入一个，已经导入的节点来源不会被改掉。</span>
+          </div>
+          <div className={s.toggleBlock}>
+            <div className={s.toggleRow}>
+              <Switch
+                checked={source.enabled}
+                label={`启用订阅「${source.name}」`}
+                pending={toggling}
+                onChange={toggle}
+              />
+              <span className={s.toggleText}>{source.enabled ? '启用中' : '已停用'}</span>
+            </div>
+            {/* 一直留着这一段，读屏软件才会念出进度和结果 */}
+            <p
+              className={result && !toggling ? cx(s.toggleResult, result.tone === 'crit' && s.toggleResultCrit) : page.sub}
+              role="status"
+            >
+              {toggling ? (
+                source.enabled ? (
+                  '正在停用……'
+                ) : (
+                  '正在启用并拉取，最多等一分钟……'
+                )
+              ) : result ? (
+                <>
+                  {result.tone === 'crit' ? <CircleAlert aria-hidden /> : <Check aria-hidden />}
+                  {result.text}
+                </>
+              ) : source.enabled ? (
+                '关掉之后，这个订阅的节点会马上移出节点池：节点页、分组候选、设备配置和订阅链接里都不再有它们。数据还留着，重新打开会马上再拉一次。'
+              ) : (
+                '停用中，它的节点不在节点池里，也不会定时拉取。打开后会马上拉一次。'
+              )}
+            </p>
+          </div>
+        </div>
       </Dialog>
       {confirmDelete && (
         <ConfirmDialog
@@ -358,11 +466,9 @@ function EditDialog({ c, source, onClose }: { c: Catalog; source: NodeSource; on
             })
           }
         >
-          <p>它导入的 {usedNodes.length} 个节点会一起删掉。</p>
+          <p>它导入的 {source.nodeCount} 个节点会一起删掉。</p>
           {inUse.length > 0 && (
-            <p>
-              其中 {inUse.length} 个正在被分组当候选节点用，删掉之后那些分组在这台设备上会少一截出口。
-            </p>
+            <p>其中 {inUse.length} 个正在被分组当候选节点用，删掉之后这些分组会少掉这些出口。</p>
           )}
         </ConfirmDialog>
       )}
@@ -370,7 +476,7 @@ function EditDialog({ c, source, onClose }: { c: Catalog; source: NodeSource; on
   )
 }
 
-/** 通过订阅地址导入节点 */
+/** 通过订阅地址导入节点。添加时服务端当场拉一次，返回时节点已经在节点池里了 */
 function ImportDialog({ onClose }: { onClose: () => void }) {
   const save = useSaveSource()
   const toast = useToast()
@@ -379,10 +485,11 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
 
   const submit = () =>
     save.mutate(
-      { id: null, name: name.trim(), url: url.trim(), refresh: true },
+      { id: null, name: name.trim(), url: url.trim() },
       {
-        onSuccess: () => {
-          toast('已添加订阅，设备下一轮会把它解析成节点')
+        onSuccess: (src) => {
+          if (src.lastError) toast(`已添加「${src.name}」，但这次没拉到：${src.lastError}`, 'crit')
+          else toast(`已添加「${src.name}」，解析出 ${src.nodeCount} 个节点`)
           onClose()
         },
         onError: (e) => toast(errorMessage(e), 'crit'),
@@ -394,52 +501,111 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       title="导入节点"
-      description="支持 sing-box、Clash 等格式的订阅地址。整条链接（含 token）只存进数据库，页面之后只显示隐去 token 的版本，也只有设备上的 Agent 会去访问它。"
+      description="支持 base64 分享链接列表（vmess、vless、trojan、ss、hysteria2 等）、Clash 和 sing-box 格式的订阅地址。整条链接只存在 singweb 的数据库里，设备拿不到它。"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             取消
           </Button>
-          <Button
-            pending={save.isPending}
-            disabled={!name.trim() || !url.trim()}
-            onClick={submit}
-          >
+          <Button pending={save.isPending} disabled={!name.trim() || !url.trim()} onClick={submit}>
             添加订阅
           </Button>
         </>
       }
     >
-      <Field label="名称" hint="比如「主力订阅」">
-        {(a) => (
-          <TextInput
-            {...a}
-            value={name}
-            maxLength={60}
-            data-autofocus
-            placeholder="主力订阅"
-            onChange={(e) => setName(e.target.value)}
-          />
-        )}
-      </Field>
-      <Field label="订阅地址" hint="整条链接，包含 token；粘贴后不会显示在别的地方">
-        {(a) => (
-          <TextInput
-            {...a}
-            value={url}
-            mono
-            placeholder="https://example.com/api/v1/client/subscribe?token=…"
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && name.trim() && url.trim()) submit()
-            }}
-          />
-        )}
-      </Field>
-      <p className={page.sub}>
-        添加之后设备要等下一轮上报才会去拉取，解析出来的节点会出现在上面的表格里。
-      </p>
+      <div className={s.dialogForm}>
+        <Field label="名称" hint="比如「主力订阅」">
+          {(a) => (
+            <TextInput
+              {...a}
+              value={name}
+              maxLength={60}
+              data-autofocus
+              placeholder="主力订阅"
+              onChange={(e) => setName(e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label="订阅地址" hint="整条链接，包含 token">
+          {(a) => (
+            <TextInput
+              {...a}
+              value={url}
+              mono
+              placeholder="https://example.com/api/v1/client/subscribe?token=…"
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && name.trim() && url.trim()) submit()
+              }}
+            />
+          )}
+        </Field>
+        <p className={page.sub} role="status">
+          {save.isPending
+            ? '正在拉取并解析订阅，最多等一分钟……'
+            : '添加后 singweb 会马上拉取一次，解析出的节点直接出现在节点池里，之后每 6 小时自动更新。'}
+        </p>
+      </div>
     </Dialog>
+  )
+}
+
+/**
+ * singweb 自己的订阅链接：节点池按分组整理成的一整份 sing-box 配置。
+ *
+ * 装了 Agent 的设备不用它（Agent 用设备密钥直接拿同一份数据），
+ * 这条是给手机上的 sing-box 这类只能导入链接的客户端的。
+ */
+function SubscriptionCard() {
+  const sub = useSubscription()
+  const reset = useResetSubscription()
+  const toast = useToast()
+  const [confirm, setConfirm] = useState(false)
+  const url = sub.data ? absoluteApiUrl(`/subscribe/${sub.data}`) : ''
+
+  return (
+    <section className={page.panel}>
+      <header className={page.panelHead}>
+        <h2 className={page.panelTitle}>singweb 订阅链接</h2>
+        <Button variant="ghost" size="sm" icon={RotateCw} disabled={!sub.data} onClick={() => setConfirm(true)}>
+          重置链接
+        </Button>
+      </header>
+      <div className={cx(page.panelBody, s.subscription)}>
+        <p className={page.sub}>
+          节点池按分组整理成的一整份 sing-box 配置。装了 Agent 的设备会自动同步，不需要它；手机上的 sing-box
+          这类只能导入链接的客户端，导入这一条就行。链接等同于密码，拿到它就能拿到全部节点。
+        </p>
+        {sub.data ? (
+          <CopyField value={url} label="复制 singweb 订阅链接" />
+        ) : sub.error ? (
+          <p className={s.sourceError}>读不到订阅链接：{errorMessage(sub.error)}</p>
+        ) : (
+          <p className={page.sub}>正在读取……</p>
+        )}
+      </div>
+      {confirm && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirm(false)}
+          title="重置订阅链接？"
+          confirmLabel="重置"
+          danger
+          pending={reset.isPending}
+          onConfirm={() =>
+            reset.mutate(undefined, {
+              onSuccess: () => {
+                toast('已重置订阅链接，旧链接已经失效')
+                setConfirm(false)
+              },
+              onError: (e) => toast(errorMessage(e), 'crit'),
+            })
+          }
+        >
+          <p>旧链接马上失效，已经导入它的客户端要重新导入新链接。装了 Agent 的设备不受影响。</p>
+        </ConfirmDialog>
+      )}
+    </section>
   )
 }
 

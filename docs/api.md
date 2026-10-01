@@ -29,6 +29,7 @@
 | GET | `/devices` | | `Device[]` |
 | GET | `/devices/{id}` | | `Device` |
 | POST | `/devices/{id}/probe` | | `204` |
+| POST | `/config/preview` | `{ "deviceId": string, "group"?: GroupInput & { "id"?: string } }` | `ConfigPreview` |
 | POST | `/devices/{deviceId}/groups/{groupId}/pending/{id}/retry` | | `{ "ok": true }` |
 | POST | `/devices/{deviceId}/groups/{groupId}/pin` | `{ "nodeId": string \| null }` | `GroupRuntime` |
 | GET | `/nodes` | | `ProxyNode[]` |
@@ -134,6 +135,32 @@
 `POST /devices/{deviceId}/groups/{groupId}/pending/{id}/retry` 把一条 `failed` 的待办退回队列，
 清掉失败计数，记一条 `switch` 事件。适合修好原因之后（比如把节点加回 selector）再试一次。
 这条待办已经被清掉或删除时返回 `404`。
+
+## 配置预览
+
+`POST /config/preview`
+
+这台设备实际会拿到的整份 sing-box 配置，用来在网页上预览。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `deviceId` | string | 看哪台设备的配置 |
+| `group` | `GroupInput & { "id"?: string }` | 可选。给了就预览这份还没保存的草稿，没给就预览这台设备上已保存的全部分组 |
+
+响应：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `config` | object | 生成的 sing-box 配置 |
+| `warnings` | string[] | 生成时跳过的内容，写给人看 |
+
+要点：
+
+- 用的是下发时同一个 `buildConfig`，所以规则顺序、selector 的候选和兜底设置跟设备拿到的完全一致。
+- 为什么由服务端生成：节点的出站（密码、UUID 之类）只在服务端有，`GET /nodes` 返回的对象里没有这些字段，前端拼不出来。
+- 密钥位置是占位符 `<由 Agent 生成>`。`clash_api.secret` 由 Agent 在本机生成、只存在设备上，不会发到浏览器。
+- 草稿走的是保存时的同一套校验，校验不过返回 `400` 并带 `field`，前端据此把消息标到对应区块。
+- 设备不存在返回 `404`。
 
 ## 节点
 
@@ -303,7 +330,7 @@
 | `failThreshold` | number | 连续多少轮未通过，判为不可用。新建时默认 3 |
 | `recoverThreshold` | number | 不可用的节点连续多少轮通过，才重新可用。新建时默认 2 |
 | `probeIntervalSec` | number | 探测间隔。新建时默认 15 |
-| `toleranceMs` | number | 按延迟选择时，别的节点至少要快这么多毫秒才切换。新建时默认 50 |
+| `toleranceMs` | number | 按延迟选择时，当前节点慢出这么多毫秒算「明显变慢」，连续两轮才切换。新建时默认 50 |
 | `failback` | boolean | 按优先级选择时，更高优先级的节点恢复后是否切回。新建时默认打开 |
 | `interruptExisting` | boolean | 切换时是否断开经过旧节点的已有连接。新建时默认关闭 |
 | `onAllFail` | `block` \| `keep-last` \| `direct` | 候选节点全部不可用时怎么办，见[全部不可用](#全部不可用)。新建时默认 `block` |
@@ -664,7 +691,7 @@ socks 用户的密码和 Clash API 的 secret 由 Agent 在本机生成，不经
 - 可用变为不可用：连续 `failThreshold` 轮未通过。
 - 不可用变为可用：连续 `recoverThreshold` 轮通过。
 - 刚开始探测的节点：第一轮通过就算可用；连续 `failThreshold` 轮未通过算不可用。
-- 延迟取最近 5 次通过时的中位数，节点变为不可用时清空。按延迟选择时，样本少于 3 个的节点不参与比较。
+- 延迟取最近 5 次通过时的中位数，节点变为不可用时清空；一次都没通过时没有延迟数据，按延迟选择时排在最后。
 
 ### 选择和切换
 
@@ -672,9 +699,13 @@ socks 用户的密码和 Clash API 的 secret 由 Agent 在本机生成，不经
 
 1. 当前节点可用，就不切换。只有两种例外：
    - `priority` 且打开了 `failback`，优先级更高的节点恢复可用：切回去。
-   - `latency`，另一个节点的延迟中位数比当前节点低，差值超过 `toleranceMs`：切过去。
-2. 当前节点不可用、被停用或者不再是候选节点：`priority` 选可用节点里优先级最高的；`latency` 选延迟中位数最低的，样本都不够时选优先级最高的。
+   - `latency`，当前节点的延迟中位数比最快的节点高出 `toleranceMs` 以上，而且连续两个探测轮次都如此：切到那一轮最快的节点。
+2. 当前节点不可用、被停用或者不再是候选节点：`priority` 选可用节点里优先级最高的；`latency` 选延迟中位数最低的。这时立刻切换，不等轮次。
 3. 当前节点还在首轮探测中：等结果出来再决定。
+
+`toleranceMs` 管的是单轮差多少算「明显变慢」，管不了这个差值是噪声还是真的变慢了。公网延迟一轮里跳几百毫秒很常见，而分组里几个节点的中位数常常只差几十毫秒，只看一轮就换会导致每个探测周期换一次出口，连接被反复打断。所以慢出容忍度要连续两轮才真的切，且只数当前节点输了几轮、不管输给谁——几个差不多快的节点轮流当第一时，当前节点其实一直都慢，不能因为领先的换了人就从头数。当前节点一换（固定节点、故障转移），轮数就从零开始。
+
+Agent 每次上报都会把最近一次探测也带上去，而探测比上报间隔长得多。服务端的 `history` 按探测时间 `at` 去重，只有 `at` 变了才追加一条；重复上报只刷新 `last` 和 `updated_at`。
 
 切换通过 Clash API 完成：
 

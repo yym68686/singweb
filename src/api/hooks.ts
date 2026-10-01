@@ -7,6 +7,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { api } from './client'
+import { ApiError } from './errors'
 import type { EventQuery, GroupInput, TargetInput, UpdateScope } from './types'
 
 export const keys = {
@@ -21,6 +22,8 @@ export const keys = {
   runtimes: (deviceId?: string) => ['runtimes', deviceId ?? 'all'] as const,
   probes: (deviceId?: string, nodeId?: string) => ['probes', deviceId ?? 'all', nodeId ?? 'all'] as const,
   events: (q: EventQuery) => ['events', q] as const,
+  subscription: ['subscription'] as const,
+  enroll: (id: string) => ['enroll', id] as const,
 }
 
 export const useMe = () =>
@@ -112,6 +115,9 @@ export function useLiveUpdates() {
             continue
           }
           void qc.invalidateQueries({ queryKey: [scope] })
+          // 设备接入时服务端推的是 devices。接入对话框的状态靠轮询，页面在后台时轮询会暂停，
+          // 跟着这条推送问一次，设备接入的那一刻对话框就能变成「已接入」
+          if (scope === 'devices') void qc.invalidateQueries({ queryKey: ['enroll'] })
         }
       }),
     [qc],
@@ -172,6 +178,26 @@ export function useDeleteGroup() {
   })
 }
 
+/**
+ * 这台设备实际会拿到的 sing-box 配置。
+ *
+ * 生成必须在服务端做：节点的出站（密码、UUID 之类）只在服务端有，
+ * 前端拿到的节点对象里没有这些字段，拼不出来。用的是真正下发时同一个
+ * `buildConfig`，所以预览里看到的规则顺序、selector、兜底都跟设备拿到的一致。
+ * 返回的配置里密钥位置是占位符，Agent 那台设备上真正生效的密钥不会离开设备。
+ */
+export function useConfigPreview(q: { deviceId: string | null; group?: GroupInput & { id?: string } }) {
+  const deviceId = q.deviceId
+  const group = q.group
+  return useQuery({
+    queryKey: ['config-preview', deviceId ?? '', group ?? null] as const,
+    queryFn: () => api.previewConfig({ deviceId: deviceId as string, group }),
+    enabled: !!deviceId,
+    // 编辑时草稿每次按键都会变，旧结果留着当占位，免得代码块一直闪
+    placeholderData: keepPreviousData,
+  })
+}
+
 export function useSetPin() {
   const invalidate = useInvalidate()
   return useMutation({
@@ -181,18 +207,19 @@ export function useSetPin() {
   })
 }
 
-/** 新建或修改订阅。新建时带 refresh 表示存下之后立刻让设备拉一次 */
+/**
+ * 新建或修改订阅。
+ *
+ * 对象存储和节点池都要失效：服务端在返回之前已经拉过一轮，拉完会广播
+ * sources/nodes/events 三个范围，这里跟着失效一次，页面立刻就是新状态，
+ * 不用等推送。
+ */
 export function useSaveSource() {
   const invalidate = useInvalidate()
   return useMutation({
-    mutationFn: (v: {
-      id: string | null
-      name?: string
-      url?: string
-      enabled?: boolean
-      refresh?: boolean
-    }) => api.saveSource(v.id, v),
-    onSuccess: () => invalidate('nodes', 'devices', 'runtimes'),
+    mutationFn: (v: { id: string | null; name?: string; url?: string; enabled?: boolean }) =>
+      api.saveSource(v.id, v),
+    onSuccess: () => invalidate('sources', 'nodes', 'events'),
   })
 }
 
@@ -200,16 +227,61 @@ export function useDeleteSource() {
   const invalidate = useInvalidate()
   return useMutation({
     mutationFn: (id: string) => api.deleteSource(id),
-    onSuccess: () => invalidate('nodes', 'devices', 'runtimes'),
+    onSuccess: () => invalidate('sources', 'nodes', 'events'),
   })
 }
 
-/** 让设备重新拉一次订阅。不立刻失效缓存：结果要等设备上报才回来 */
+/** 立刻重拉一次订阅。拉取在这个接口里做完，返回时节点池已经变了 */
 export function useRefreshSource() {
   const invalidate = useInvalidate()
   return useMutation({
     mutationFn: (id: string) => api.refreshSource(id),
-    onSuccess: () => invalidate('nodes', 'devices'),
+    onSuccess: () => invalidate('sources', 'nodes', 'events'),
+  })
+}
+
+/** 设备拿配置用的那条链接。token 不会自己变，取一次就够 */
+export const useSubscription = () =>
+  useQuery({
+    queryKey: keys.subscription,
+    queryFn: () => api.getSubscription(),
+    staleTime: Infinity,
+  })
+
+export function useResetSubscription() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.resetSubscription(),
+    onSuccess: (token) => {
+      qc.setQueryData(keys.subscription, token)
+    },
+  })
+}
+
+/** 生成一条接入命令。生成之后不会自己重试，所以不放在 query 里 */
+export function useCreateEnroll() {
+  return useMutation({ mutationFn: () => api.createEnroll() })
+}
+
+/**
+ * 轮询接入命令的状态。
+ *
+ * 两秒一次，跟安装脚本跑起来的时间尺度对得上；拿到 joined 或者命令失效（404）就停，
+ * 失效由调用方提示用户换一条。active 为 false 时暂停轮询但留着结果：
+ * 对话框关掉再打开，还能接着看同一条命令。
+ */
+export function useEnrollStatus(id: string | null, active = true) {
+  return useQuery({
+    queryKey: keys.enroll(id ?? ''),
+    queryFn: () => api.getEnroll(id as string),
+    enabled: !!id && active,
+    refetchInterval: (q) => {
+      if (q.state.data?.state === 'joined') return false
+      const err = q.state.error
+      return err instanceof ApiError && err.status === 404 ? false : 2000
+    },
+    retry: false,
+    staleTime: 0,
   })
 }
 

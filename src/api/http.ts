@@ -1,6 +1,7 @@
 import type { ApiClient } from './client'
 import { ApiError } from './errors'
 import type {
+  ConfigPreview,
   Device,
   EventPage,
   EventQuery,
@@ -22,8 +23,25 @@ async function items<T>(p: Promise<{ items: T[] }>): Promise<T[]> {
   return (await p).items
 }
 
-const ALL_SCOPES: UpdateScope[] = ['devices', 'nodes', 'targets', 'groups', 'runtimes', 'probes', 'events']
+const ALL_SCOPES: UpdateScope[] = ['devices', 'nodes', 'sources', 'targets', 'groups', 'runtimes', 'probes', 'events']
 const POLL_MS = 10_000
+
+/**
+ * 立即刷新的结果。拉取失败不会让请求失败：上次的节点还在，
+ * ok 和 error 说的是这一次拉没拉到。
+ */
+export interface RefreshResult {
+  ok: boolean
+  error: string | null
+  nodeCount: number
+  refreshedAt: string
+  source: NodeSource | null
+}
+
+/** 设备页轮询接入命令的状态，加入之后才带 deviceId */
+export type EnrollStatus =
+  | { state: 'pending'; expiresAt: string }
+  | { state: 'joined'; deviceId: string; device: Device | null }
 
 /** 连接管理服务的实现，接口见 docs/api.md */
 export class HttpApiClient implements ApiClient {
@@ -135,6 +153,9 @@ export class HttpApiClient implements ApiClient {
   deleteGroup(id: string) {
     return this.request<void>('DELETE', `/groups/${encodeURIComponent(id)}`)
   }
+  previewConfig(q: { deviceId: string; group?: GroupInput & { id?: string } }) {
+    return this.request<ConfigPreview>('POST', '/config/preview', q)
+  }
 
   getRuntimes(q: { deviceId?: string } = {}) {
     return items(this.request<{ items: GroupRuntime[] }>('GET', `/runtime${this.query(q)}`))
@@ -179,25 +200,45 @@ export class HttpApiClient implements ApiClient {
   getSources() {
     return items(this.request<{ items: NodeSource[] }>('GET', '/sources'))
   }
-  async saveSource(
-    id: string | null,
-    input: { name?: string; url?: string; enabled?: boolean; refresh?: boolean },
-  ) {
-    // refresh 不是订阅自身的字段，它是「让设备重新拉一次」的动作，走另一个接口
-    const { refresh, ...patch } = input
+  /**
+   * 新建或修改订阅。
+   *
+   * 这里不做别的事：新建以及「改了地址」「从停用改成启用」这三种情况，
+   * 服务端在返回之前自己已经拉过一轮了，返回的 source 就是拉完的状态。
+   * 前端再补一次 refresh 只会和刷新结果赛跑——两次 GET 里先落地的那个
+   * 会被后一个的失效冲掉，页面看上去就像什么都没变。
+   */
+  async saveSource(id: string | null, input: { name?: string; url?: string; enabled?: boolean }) {
     const result = await this.request<{ source: NodeSource }>(
       id ? 'PATCH' : 'POST',
       id ? `/sources/${encodeURIComponent(id)}` : '/sources',
-      patch,
+      input,
     )
-    if (refresh && result.source) await this.refreshSource(result.source.id)
     return result.source
   }
   deleteSource(id: string) {
     return this.request<void>('DELETE', `/sources/${encodeURIComponent(id)}`)
   }
+  /** 让服务端立刻重拉一次这个订阅 */
   refreshSource(id: string) {
-    return this.request<void>('POST', `/sources/${encodeURIComponent(id)}/refresh`)
+    return this.request<RefreshResult>('POST', `/sources/${encodeURIComponent(id)}/refresh`)
+  }
+
+  /** 网页上显示给用户的那条订阅链接里的 token */
+  async getSubscription() {
+    return (await this.request<{ token: string }>('GET', '/subscription')).token
+  }
+  async resetSubscription() {
+    return (await this.request<{ token: string }>('POST', '/subscription/reset')).token
+  }
+
+  /** 生成一条设备接入命令用的令牌 */
+  createEnroll() {
+    return this.request<{ id: string; token: string; expiresAt: string }>('POST', '/devices/enroll')
+  }
+  /** 设备页轮询这条命令用掉了没有 */
+  getEnroll(id: string) {
+    return this.request<EnrollStatus>('GET', `/devices/enroll/${encodeURIComponent(id)}`)
   }
 
   /** 优先用 SSE；连不上时退回定时刷新 */
