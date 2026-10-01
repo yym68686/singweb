@@ -243,9 +243,10 @@ export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: 
 
       /*
        * 光在候选列表里还不够：切换是让设备把 selector 切到这个节点，而 selector
-       * 只认得自己 outbounds 里列出的名字。设备上的配置文件是用户自己维护的，
-       * 可能比网页上的候选列表旧（比如刚改过订阅、或者粘贴的还是旧片段），
-       * 这时候切过去必然失败——sing-box 直接返回 not found。
+       * 只认得自己 outbounds 里列出的名字。设备上的配置由 Agent 按照候选节点生成，
+       * 但这份列表是上一次生成时的样子：刚加进候选的节点、刚才被停用又启用的节点、
+       * 或者节点没了又重加回来的情况，设备那边可能还要下一轮才跟上（还会顺手重启
+       * sing-box），这时候切过去必然失败——sing-box 直接返回 not found。
        *
        * 所以这里拿设备实际上报的列表再挡一道，把"点了没反应"变成"点的时候就说清楚"。
        * availableNodeIds 是 null 时说明 Agent 没读到（Clash API 不通、设备没上报过
@@ -256,8 +257,8 @@ export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: 
       const known = runtime?.available_node_ids ?? null
       if (known && !known.includes(nodeId)) {
         throw conflict(
-          `节点「${node.tag}」不在「${device.name}」上「${group.selectorTag}」的候选列表里。` +
-            `设备上的 sing-box 配置需要重新生成并重启，网页上的节点列表才会跟上。`,
+          `「${device.name}」上的「${group.selectorTag}」现在还没有「${node.tag}」，` +
+            `可能是刚加入候选、或者设备还没来得及重新生成配置。等下一次上报之后再试。`,
           'nodeId',
         )
       }
