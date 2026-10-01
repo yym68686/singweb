@@ -360,7 +360,7 @@ irm "{站点}/api/v1/install/windows.ps1?token={token}" | iex
 | `id` | string | 管理服务生成 |
 | `name` | string | |
 | `selectorTag` | string | 设备上 selector 出站的 tag |
-| `deviceIds` | string[] | 应用到哪些设备 |
+| `deviceIds` | string[] | 应用到哪些设备。空数组表示所有设备，包括以后接入的 |
 | `match` | `TrafficMatch` | 哪些流量交给这个分组，见[接管的流量](#接管的流量) |
 | `candidates` | `Candidates` | 候选节点，见[候选节点](#候选节点) |
 | `selection` | `auto` \| `manual` | 按规则自动切换，或者手动选择。新建时默认 `auto` |
@@ -420,7 +420,7 @@ irm "{站点}/api/v1/install/windows.ps1?token={token}" | iex
 
 ### 接管的流量
 
-`match` 的条件分三类。同一类里满足任意一项即可，设置了的几类要同时满足。至少要设置一类。
+`match` 的条件分三类。同一类里满足任意一项即可，设置了的几类要同时满足。一类都不设的是兜底分组：别的分组没接管的流量都走它，一台设备上最多一个兜底分组。
 
 | 类 | 字段 | 说明 |
 | --- | --- | --- |
@@ -477,13 +477,13 @@ irm "{站点}/api/v1/install/windows.ps1?token={token}" | iex
 | --- | --- |
 | `name` | 必填 |
 | `selectorTag` | 只能包含字母、数字、`-` 和 `_`；不能和别的分组重复；不能和节点的 tag 或 `direct` 重名 |
-| `deviceIds` | 至少一台 |
-| `match` | 至少设置一类条件 |
+| `deviceIds` | 列出的设备都要存在；空数组表示所有设备 |
+| `match` | 一类都不设时是兜底分组，同一台设备上不能有两个兜底分组 |
 | `domains` | 有效的域名。保存前转成小写，去掉开头的 `*.` 或 `.` |
 | `ipCidrs` | IPv4 或 IPv6 的 IP 段。只填一个 IP 时，保存为 `/32` 或 `/128` |
 | `ruleSets` | 只能包含字母、数字、`.`、`-` 和 `_` |
 | `ports` | 1–65535 的整数 |
-| `candidates` | 逐个挑选时至少一个节点；按条件自动加入时，现在至少要匹配到一个节点 |
+| `candidates` | 逐个挑选时至少一个节点，按规则自动切换时这些节点不能全被停用。按条件自动加入时，现在一个都没匹配到也可以，以后符合条件的节点会自动加入 |
 | `targetIds` | 按规则自动切换时至少一条 |
 | `failThreshold` | 1–10 |
 | `recoverThreshold` | 1–10 |

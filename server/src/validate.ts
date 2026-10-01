@@ -257,7 +257,7 @@ function isIp(addr: string, v4: boolean): boolean {
   return text.includes('::') ? groups.length <= 7 : groups.length === 8
 }
 
-/** 接管的流量。至少要设一类，返回规范化之后的值 */
+/** 接管的流量，返回规范化之后的值。一类都不设的是兜底分组 */
 export function checkMatch(value: unknown): TrafficMatch {
   if (!value || typeof value !== 'object') fail('match', '接管条件的格式不对。')
   const raw = value as Record<string, unknown>

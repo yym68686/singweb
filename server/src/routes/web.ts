@@ -6,7 +6,6 @@
  */
 
 import type {
-  AllFailAction,
   Device,
   Group,
   GroupRuntime,
@@ -536,7 +535,7 @@ export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: 
   router.post('/groups', async ({ req, res }) => {
     const shape = await prepareGroup(await readBody(req), null)
     const row = await store.insertGroup(shape)
-    await logGroupChange(null, row.id, shape.name, '创建了分组')
+    await logGroupChange(row.id, `新建了分组「${shape.name}」`)
     live.update(GROUP_SCOPES)
     sendJson(res, 201, { group: await store.findGroup(row.id) })
   })
@@ -546,15 +545,22 @@ export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: 
     if (!existing) throw notFound('找不到这个分组。')
     const before = toGroup(existing)
     const shape = await prepareGroup(await readBody(req), before)
-    await store.updateGroup(params.id, shape)
-    // 设备列表变了的话，多出来的运行状态要清掉。
-    // 空列表表示所有设备，包括以后加的，实际范围要按当前的设备表算出来。
-    await store.pruneRuntime(groupDeviceIds(shape, await store.listDeviceRows()), [params.id])
-    // 停用的节点不该留在候选列表里，挡一道免得设备那边拿到空列表
-    await store.clearDanglingRefs(
-      shape.candidates.mode === 'list' ? shape.candidates.nodeIds : [],
-    )
-    await logGroupChange(before, params.id, shape.name, describeGroupChange(before, shape))
+    const [devices, nodes] = await Promise.all([
+      store.listDeviceRows(),
+      store.listAllNodeRows().then((rows) => rows.map(toProxyNode)),
+    ])
+    const candidates = candidateIds(shape, nodes)
+    const enabled = new Set(nodes.filter((n) => n.enabled).map((n) => n.id))
+    await store.updateGroup(params.id, shape, {
+      // 空列表表示所有设备，包括以后加的，实际范围要按当前的设备表算出来
+      deviceIds: groupDeviceIds(shape, devices),
+      candidateIds: candidates,
+      enabledIds: candidates.filter((id) => enabled.has(id)),
+      selection: shape.selection === before.selection ? null : shape.selection,
+    })
+    const changed = changedSettings(before, shape)
+    // 没有实际改动时不记，见 docs/api.md
+    if (changed.length) await logGroupChange(params.id, `修改了分组「${shape.name}」：${changed.join('、')}`)
     live.update(GROUP_SCOPES)
     sendJson(res, 200, { group: await store.findGroup(params.id) })
   })
@@ -564,7 +570,7 @@ export function registerWebRoutes(router: Router, live: LiveHub, subscriptions: 
     if (!row) throw notFound('找不到这个分组。')
     const before = toGroup(row)
     await store.deleteGroup(params.id)
-    await logGroupChange(before, params.id, before.name, '删除了分组')
+    await logGroupChange(params.id, `删除了分组「${before.name}」`)
     live.update(GROUP_SCOPES)
     res.writeHead(204, { 'cache-control': 'no-store' }).end()
   })
@@ -729,48 +735,58 @@ async function prepareGroup(
     before ? groups.filter((g) => g.id !== before.id) : groups,
   )
 
-  // 候选节点全被停用时提醒一句：分组建出来也不会有出口
-  const enabled = nodes.filter((n) => n.enabled)
-  const usable =
-    shape.candidates.mode === 'list'
-      ? shape.candidates.nodeIds.filter((id) => enabled.some((n) => n.id === id)).length
-      : enabled.length
-  if (shape.selection === 'auto' && !usable) {
+  // 逐个挑选的节点全被停用时提醒一句：分组建出来也不会有出口。
+  // 按条件自动加入的不拦，现在没有符合的节点也行（比如订阅还没导入），以后符合条件的节点会自动加入
+  const enabled = new Set(nodes.filter((n) => n.enabled).map((n) => n.id))
+  if (
+    shape.selection === 'auto' &&
+    shape.candidates.mode === 'list' &&
+    !shape.candidates.nodeIds.some((id) => enabled.has(id))
+  ) {
     throw new ApiError(400, '候选节点现在都被停用了，先去节点页启用至少一个。', 'candidates')
   }
 
   return shape
 }
 
-/** 分组变更的说明，写进事件里给用户回头看 */
-function describeGroupChange(before: Group, after: Omit<Group, 'id' | 'updatedAt'>): string {
-  const parts: string[] = []
-  if (before.name !== after.name) parts.push(`名称改为「${after.name}」`)
-  if (before.selection !== after.selection) {
-    parts.push(after.selection === 'manual' ? '改为手动选择' : '改为按规则自动切换')
-  }
-  if (before.strategy !== after.strategy) {
-    parts.push(after.strategy === 'latency' ? '改为按延迟选择' : '改为按优先级选择')
-  }
-  if (before.onAllFail !== after.onAllFail) parts.push('全部不可用时的处理有变动')
-  if (before.targetIds.join() !== after.targetIds.join()) parts.push('分组规则有变动')
-  if ((before.targetMode as AllFailAction | string) !== after.targetMode) parts.push('规则的通过条件有变动')
-  if (JSON.stringify(before.match) !== JSON.stringify(after.match)) parts.push('接管范围有变动')
-  if (JSON.stringify(before.candidates) !== JSON.stringify(after.candidates)) {
-    parts.push('候选节点有变动')
-  }
-  if (before.deviceIds.join() !== after.deviceIds.join()) parts.push('适用设备有变动')
-  if (before.probeIntervalSec !== after.probeIntervalSec) parts.push('探测间隔有变动')
-  return parts.length ? parts.join('，') : '保存了分组，内容没有变化'
+/**
+ * 修改分组时改了哪些设置，写进事件里给用户回头看，叫法跟编辑页上一致。没改什么时是空数组。
+ *
+ * 要按内容比：match、candidates 存在 jsonb 里，读回来时键的顺序变了（jsonb 把短的键排在前面），
+ * 直接比 JSON.stringify 的话，每次保存都会算成这两项改过
+ */
+function changedSettings(before: Group, after: Omit<Group, 'id' | 'updatedAt'>): string[] {
+  const settings: Array<[string, unknown, unknown]> = [
+    [`名称（原来叫「${before.name}」）`, before.name, after.name],
+    ['selector tag', before.selectorTag, after.selectorTag],
+    ['适用设备', before.deviceIds, after.deviceIds],
+    ['接管的流量', before.match, after.match],
+    ['候选节点', before.candidates, after.candidates],
+    ['选择方式', before.selection, after.selection],
+    ['分组规则', before.targetIds, after.targetIds],
+    ['规则判定方式', before.targetMode, after.targetMode],
+    ['选节点的方式', before.strategy, after.strategy],
+    ['判定不可用', before.failThreshold, after.failThreshold],
+    ['判定恢复', before.recoverThreshold, after.recoverThreshold],
+    ['探测间隔', before.probeIntervalSec, after.probeIntervalSec],
+    ['延迟容差', before.toleranceMs, after.toleranceMs],
+    ['恢复后切回', before.failback, after.failback],
+    ['切换时断开已有连接', before.interruptExisting, after.interruptExisting],
+    ['全部不可用时的处理', before.onAllFail, after.onAllFail],
+  ]
+  return settings.filter(([, a, b]) => canonical(a) !== canonical(b)).map(([label]) => label)
 }
 
-function logGroupChange(
-  before: Group | null,
-  groupId: string,
-  name: string,
-  detail: string,
-): Promise<unknown> {
-  const head = before ? `「${name}」` : `新建分组「${name}」`
+/** 按内容序列化：对象的键排好序，数组保持原样（候选节点的顺序就是优先级） */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
+}
+
+function logGroupChange(groupId: string, message: string): Promise<unknown> {
   return store.insertEvent({
     at: new Date().toISOString(),
     kind: 'group-changed',
@@ -778,7 +794,7 @@ function logGroupChange(
     deviceId: null,
     groupId,
     nodeId: null,
-    message: `${head}${detail}`,
+    message,
   })
 }
 

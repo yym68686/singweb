@@ -43,6 +43,7 @@ import type {
   Platform,
   ProbeCell,
   ProxyNode,
+  Selection,
   StoredNode,
   Target,
 } from '../../shared/types.ts'
@@ -473,37 +474,100 @@ export async function insertGroup(input: Omit<Group, 'id' | 'updatedAt'>): Promi
   return created
 }
 
+/** 改分组时，它在各设备上的运行状态要跟着改的地方，由调用方按改后的分组算好 */
+export interface GroupRuntimeChange {
+  /** 分组现在应用到的设备 */
+  deviceIds: string[]
+  /** 分组现在的候选节点，含停用的 */
+  candidateIds: string[]
+  /** 其中启用的那些 */
+  enabledIds: string[]
+  /** 选择方式改成了什么，没改是 null */
+  selection: Selection | null
+}
+
+/**
+ * 改分组，连同它在各设备上的运行状态，放在一个事务里。
+ *
+ * 运行状态里存着用户在设备页做的手动选择和固定节点，删了就找不回来，
+ * 所以这里只动这个分组自己的行（规则见 docs/api.md 的分组一节）：
+ * - 不再应用到的设备上，这个分组的运行状态整行删掉，排队的切换也一样；
+ * - 固定或选中的节点不再是候选节点的，清掉，排队要切过去的也作废——
+ *   留着的话设备上线后会先切过去再报错；
+ * - 改成手动选择：当前出口是启用的候选节点时，记成选中的节点，流量不动。
+ *   不记的话 Agent 会按「没选过」改走第一个候选节点；
+ * - 改回按规则自动切换：清掉选中的节点和排队的切换。留下的选择在自动分组里
+ *   就是固定，分组会一直停在那个节点上，不再按规则切换。
+ *
+ * 跟分组一起提交，是因为 Agent 每轮都来拿分组和固定节点，读到「已经改成手动、
+ * 选中的节点还没记上」这样的中间状态，就会切到第一个候选节点、下一轮再切回来。
+ */
 export async function updateGroup(
   id: string,
   input: Omit<Group, 'id' | 'updatedAt'>,
+  runtime: GroupRuntimeChange,
 ): Promise<GroupRow | null> {
-  await run(
-    `update groups set
-       name = $2, selector_tag = $3, device_ids = $4, match = $5, candidates = $6, selection = $7,
-       target_ids = $8, target_mode = $9, strategy = $10, fail_threshold = $11,
-       recover_threshold = $12, probe_interval_sec = $13, tolerance_ms = $14, failback = $15,
-       interrupt_existing = $16, on_all_fail = $17, updated_at = now()
-     where id = $1`,
-    [
-      id,
-      input.name,
-      input.selectorTag,
-      JSON.stringify(input.deviceIds),
-      JSON.stringify(input.match),
-      JSON.stringify(input.candidates),
-      input.selection,
-      JSON.stringify(input.targetIds),
-      input.targetMode,
-      input.strategy,
-      input.failThreshold,
-      input.recoverThreshold,
-      input.probeIntervalSec,
-      input.toleranceMs,
-      input.failback,
-      input.interruptExisting,
-      input.onAllFail,
-    ],
-  )
+  await tx(async (client) => {
+    await client.query(
+      `update groups set
+         name = $2, selector_tag = $3, device_ids = $4, match = $5, candidates = $6, selection = $7,
+         target_ids = $8, target_mode = $9, strategy = $10, fail_threshold = $11,
+         recover_threshold = $12, probe_interval_sec = $13, tolerance_ms = $14, failback = $15,
+         interrupt_existing = $16, on_all_fail = $17, updated_at = now()
+       where id = $1`,
+      [
+        id,
+        input.name,
+        input.selectorTag,
+        JSON.stringify(input.deviceIds),
+        JSON.stringify(input.match),
+        JSON.stringify(input.candidates),
+        input.selection,
+        JSON.stringify(input.targetIds),
+        input.targetMode,
+        input.strategy,
+        input.failThreshold,
+        input.recoverThreshold,
+        input.probeIntervalSec,
+        input.toleranceMs,
+        input.failback,
+        input.interruptExisting,
+        input.onAllFail,
+      ],
+    )
+    await client.query(
+      'delete from group_runtime where group_id = $1 and not (device_id = any($2))',
+      [id, runtime.deviceIds],
+    )
+    await client.query(
+      `update group_runtime
+          set pinned_node_id = null
+        where group_id = $1
+          and pinned_node_id is not null
+          and not (pinned_node_id = any($2))`,
+      [id, runtime.candidateIds],
+    )
+    await client.query(
+      `delete from pending_switches
+        where group_id = $1
+          and (not (device_id = any($2)) or (node_id is not null and not (node_id = any($3))))`,
+      [id, runtime.deviceIds, runtime.candidateIds],
+    )
+
+    if (runtime.selection === 'manual') {
+      await client.query(
+        `update group_runtime
+            set pinned_node_id = active_node_id
+          where group_id = $1
+            and pinned_node_id is null
+            and active_node_id = any($2)`,
+        [id, runtime.enabledIds],
+      )
+    } else if (runtime.selection === 'auto') {
+      await client.query('update group_runtime set pinned_node_id = null where group_id = $1', [id])
+      await client.query('delete from pending_switches where group_id = $1', [id])
+    }
+  })
   return findGroupRow(id)
 }
 
@@ -727,15 +791,6 @@ export async function dropRuntime(groupId: string): Promise<void> {
 
 export async function dropRuntimeOfDeviceGroup(deviceId: string, groupId: string): Promise<void> {
   await run('delete from group_runtime where device_id = $1 and group_id = $2', [deviceId, groupId])
-}
-
-/** 分组不再应用到某台设备时，把它的运行状态清掉 */
-export async function pruneRuntime(deviceIds: string[], groupIds: string[]): Promise<number> {
-  return run(
-    `delete from group_runtime
-      where not (device_id = any($1)) or not (group_id = any($2))`,
-    [deviceIds, groupIds],
-  )
 }
 
 // ---------------------------------------------------------------- 探测结果
