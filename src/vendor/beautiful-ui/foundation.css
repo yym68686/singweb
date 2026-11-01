@@ -395,15 +395,6 @@ a:focus-visible .animated-underline::after {
 
 /* ── shared keyframes ─────────────────────────────────── */
 
-@keyframes shimmer-text {
-  from {
-    background-position: 150% center;
-  }
-  to {
-    background-position: -50% center;
-  }
-}
-
 @keyframes fade-up {
   from {
     opacity: 0;
@@ -609,19 +600,6 @@ a:focus-visible .animated-underline::after {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-/* pixel-grid loader — brighten plateau, staggered per cell */
-@keyframes pixel-on {
-  0%, 100% {
-    opacity: 0.15;
-  }
-  18%, 42% {
-    opacity: 1;
-  }
-  62% {
-    opacity: 0.15;
   }
 }
 
