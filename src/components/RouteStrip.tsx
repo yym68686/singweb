@@ -25,6 +25,7 @@ interface RouteStripProps {
   nodes: Map<string, ProxyNode>
   targets?: Map<string, Target>
   label?: string
+  candidateDetails?: ReactNode
 }
 
 function subText(h: NodeHealth, node: ProxyNode | undefined, group: Group): string {
@@ -54,7 +55,7 @@ function portsOf(runtime: GroupRuntime, group: Group, nodes: Map<string, ProxyNo
 }
 
 /** 当前出口先给出结论，候选节点及探测详情逐层展开。 */
-export function RouteStrip({ runtime, group, nodes, targets, label }: RouteStripProps) {
+export function RouteStrip({ runtime, group, nodes, targets, label, candidateDetails }: RouteStripProps) {
   const ports = portsOf(runtime, group, nodes)
   const active = ports.find((port) => port.id === runtime.activeNodeId)
   const blocked = runtime.activeNodeId === null
@@ -72,7 +73,7 @@ export function RouteStrip({ runtime, group, nodes, targets, label }: RouteStrip
       {active?.kind === 'down' && <Notice tone="crit" title="当前出口不可用" />}
       {runtime.activeNodeId === DIRECT && <Notice tone="warn" title="正在直连">对方会看到设备的真实出口 IP。</Notice>}
       <Disclosure title="候选节点与探测详情" meta={`${ports.length} 个`}>
-        {ports.length ? (
+        {candidateDetails ?? (ports.length ? (
           <ol className={s.nodes}>
             {ports.map((port) => (
               <li key={port.id}>
@@ -85,7 +86,7 @@ export function RouteStrip({ runtime, group, nodes, targets, label }: RouteStrip
               </li>
             ))}
           </ol>
-        ) : <p className={s.meta}>尚无候选节点状态。</p>}
+        ) : <p className={s.meta}>暂无候选节点状态</p>)}
       </Disclosure>
     </div>
   )
@@ -113,3 +114,4 @@ function PortDetail({ port, group, targets }: { port: Port; group: Group; target
     </div>
   )
 }
+import type { ReactNode } from 'react'

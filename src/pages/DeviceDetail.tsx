@@ -22,9 +22,8 @@ import { isCritical } from '../lib/status'
 import { cx } from '../lib/cx'
 import { hopText, runtimeNote } from '../lib/explain'
 import { formatFull, gapBefore, joinZh, ms, timeAgo } from '../lib/format'
-import { rulesText } from '../lib/groupText'
 import { keepNames } from '../lib/keepNames'
-import { allFailLabel, osText, probeFailText, protocolLabel, strategyLabel } from '../lib/labels'
+import { osText, probeFailText, protocolLabel } from '../lib/labels'
 import { MIN_SINGBOX, singboxTooOld, toJson } from '../lib/singbox'
 import t from '../components/DataTable.module.css'
 import page from '../styles/page.module.css'
@@ -181,18 +180,6 @@ function GroupPanel({ d, g, rt, c, now }: Omit<PanelProps, 'rt'> & { rt?: GroupR
       summary={rt ? <RuntimeBadge state={rt.state} /> : '等待 Agent 上报'}
       collapsible
       defaultOpen={!!rt && (isCritical(rt.state) || !!rt.pendingSwitch?.failedAt)}
-      description={
-        <>
-          selector <span className="mono">{keepNames(g.selectorTag)}</span>，
-          {manual ? (
-            '手动选择，不探测。'
-          ) : (
-            <>
-              {strategyLabel[g.strategy]}，全部不可用时{allFailLabel[g.onAllFail]}。分组规则：{keepNames(rulesText(g, c.target))}。
-            </>
-          )}
-        </>
-      }
       actions={
         <ButtonLink to={`/groups/${g.id}`} size="sm" variant="ghost" icon={Pencil}>
           编辑分组
@@ -202,18 +189,18 @@ function GroupPanel({ d, g, rt, c, now }: Omit<PanelProps, 'rt'> & { rt?: GroupR
       {rt ? (
         <div className={page.panel}>
           <div className={s.state}>
-            <div className={s.stateText}>
-              <RuntimeBadge state={rt.state} />
-              <p>{keepNames(runtimeNote(rt, c, now))}</p>
-            </div>
+            {!['ok', 'manual', 'pinned', 'stale'].includes(rt.state) && (
+              <div className={s.stateText}><p>{keepNames(runtimeNote(rt, c, now))}</p></div>
+            )}
             {manual ? <NodePicker d={d} g={g} rt={rt} c={c} /> : <PinControl d={d} g={g} rt={rt} c={c} />}
           </div>
           <div className={s.strip}>
-            <RouteStrip runtime={rt} group={g} nodes={c.node} targets={c.target} />
+            <RouteStrip runtime={rt} group={g} nodes={c.node} targets={c.target}
+              candidateDetails={manual ? <CandidateTable g={g} rt={rt} c={c} /> : <NodeTable d={d} g={g} rt={rt} c={c} />}
+            />
           </div>
           <PendingNote d={d} g={g} rt={rt} c={c} />
           <ConnectionNote g={g} rt={rt} c={c} now={now} />
-          {manual ? <CandidateTable g={g} rt={rt} c={c} /> : <NodeTable d={d} g={g} rt={rt} c={c} />}
         </div>
       ) : (
         <p className={page.sub}>Agent 还没有上报这个分组的状态。</p>
@@ -491,9 +478,7 @@ function NodeTable({ d, g, rt, c }: PanelProps) {
       </TableScroll>
       {/* 说明放在滚动区外面：表格横向滚动时也能读全 */}
       <p id={noteId} className={s.tableNote}>
-        {g.strategy === 'priority' ? '候选节点，按优先级排列。' : '候选节点，按分组里的顺序排列，实际按延迟挑选。'}
-        状态按分组规则判定：连续失败 {g.failThreshold} 轮算不可用，不可用的节点要连续成功 {g.recoverThreshold}{' '}
-        轮才恢复。探测不会登录，也不带任何账号或凭据，通过只说明经过这个节点能连到这些服务。
+        连续失败 {g.failThreshold} 轮判定不可用，连续成功 {g.recoverThreshold} 轮恢复。
       </p>
     </div>
   )
@@ -548,7 +533,7 @@ function CandidateTable({ g, rt, c }: Omit<PanelProps, 'd'>) {
         </table>
       </TableScroll>
       <p id={noteId} className={s.tableNote}>
-        候选节点，按分组里的顺序排列。没有选过节点，或者选中的节点停用了，就走第一个启用的节点。手动选择的分组不探测，这里看不到节点是否可用。
+        手动选择，不探测；未选择时使用首个启用的节点。
       </p>
     </div>
   )

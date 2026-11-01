@@ -202,6 +202,10 @@ test('live outlet details disclose one level at a time on overview and device ro
   await expect(page.getByRole('heading', { name: '测试设备', level: 1 })).toBeVisible()
   await page.locator('#group-group-1 > summary').click()
   await expect(page.getByText('当前出口：东京节点')).toBeVisible()
+  await expect(page.getByRole('table', { name: '「默认分组」的候选节点' })).toBeHidden()
+  await page.getByText('候选节点与探测详情').click()
+  await expect(page.getByRole('table', { name: '「默认分组」的候选节点' })).toBeVisible()
+  await expect(page.getByRole('table', { name: '「默认分组」的候选节点' })).toHaveCount(1)
 })
 
 test('API failures stay visible with a working retry state', async ({ page }) => {
