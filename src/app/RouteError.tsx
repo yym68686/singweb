@@ -24,7 +24,6 @@ export function RouteError({ standalone }: { standalone?: boolean }) {
     <div className={standalone ? s.standalone : undefined}>
       <div className={s.box} role="alert">
         <h1 className={s.title}>页面出错了</h1>
-        <p>这个页面在显示时遇到了问题，数据和设备上的配置都不受影响。重新加载通常就能恢复；如果反复出现，请把下面的错误信息反馈给维护者。</p>
         <pre className={s.detail} tabIndex={0} aria-label="错误信息">
           {describe(error)}
         </pre>

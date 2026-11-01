@@ -59,7 +59,6 @@ export default function Login() {
             <circle cx="23" cy="9" r="3.6" />
           </svg>
           <h1 className={s.title}>singweb</h1>
-          <p className={s.lede}>登录后才能管理设备上的分组和出口。</p>
         </div>
 
         <form className={s.form} onSubmit={submit} noValidate>
@@ -102,9 +101,6 @@ export default function Login() {
           </Button>
         </form>
 
-        <p className={s.foot}>
-          没有账号就找管理员开一个。会话只存在浏览器里，关掉浏览器就要重新登录。
-        </p>
       </main>
     </div>
   )
