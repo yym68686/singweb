@@ -1,21 +1,53 @@
 .loading {
+  width: 100%;
+  padding: var(--sp-5) 0;
+}
+
+.skeleton {
   display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-6) 0;
-  color: var(--ink-2);
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 
-.spin {
-  width: 18px;
-  height: 18px;
-  animation: spin 0.9s linear infinite;
+.skeletonLine {
+  display: block;
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--line-soft) 25%, var(--hover-2) 50%, var(--line-soft) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-wave 1.5s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.skeletonHeading {
+  width: min(17rem, 68%);
+  height: 26px;
+  margin-bottom: var(--sp-1);
+}
+
+.skeletonLead {
+  width: min(31rem, 88%);
+  margin-bottom: var(--sp-2);
+}
+
+.skeletonRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.skeletonLong { width: min(40rem, 96%); }
+.skeletonMedium { width: min(32rem, 82%); }
+.skeletonShort { width: min(24rem, 64%); }
+
+@keyframes skeleton-wave {
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonLine { animation: none; }
 }
 
 .error {

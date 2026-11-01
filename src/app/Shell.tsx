@@ -56,6 +56,15 @@ export function Shell() {
   const [drawer, setDrawer] = useState(false)
   const close = () => setDrawer(false)
 
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 900px)')
+    const closeOnDesktop = () => {
+      if (desktop.matches) setDrawer(false)
+    }
+    desktop.addEventListener('change', closeOnDesktop)
+    return () => desktop.removeEventListener('change', closeOnDesktop)
+  }, [])
+
   return (
     <div className={s.shell}>
       <a href="#main" className={s.skip}>
@@ -69,6 +78,15 @@ export function Shell() {
           <Button variant="ghost" icon={Menu} aria-label="打开导航" aria-expanded={drawer} onClick={() => setDrawer(true)} />
         </div>
       </header>
+
+      <aside className={s.sidebar} aria-label="侧边栏">
+        <Brand />
+        <Nav critical={critical} />
+        <div className={s.sideFoot}>
+          <ThemeSwitch />
+          <AccountMenu />
+        </div>
+      </aside>
 
       <Drawer open={drawer} onClose={close}>
         <div className={s.drawerHead}>
@@ -122,6 +140,9 @@ function Nav({ critical, onNavigate }: { critical: number; onNavigate?: () => vo
   const location = useLocation()
   const isConfigRoute = CONFIG_NAV.some(({ to }) => location.pathname === to || location.pathname.startsWith(`${to}/`))
   const [configOpen, setConfigOpen] = useState(isConfigRoute)
+  useEffect(() => {
+    if (isConfigRoute) setConfigOpen(true)
+  }, [isConfigRoute])
   const item = (n: NavItem) => (
     <li key={n.to}>
       <NavLink to={n.to} end={n.end} className={({ isActive }) => (isActive ? `${s.link} ${s.active}` : s.link)} onClick={onNavigate}>

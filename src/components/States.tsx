@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { CircleAlert, RotateCcw, type LucideIcon } from 'lucide-react'
-import BeautifulLoadingState from '../vendor/beautiful-ui/LoadingState'
 import { errorMessage } from '../api/errors'
 import { keepNames } from '../lib/keepNames'
 import { Button } from './Button'
@@ -8,8 +7,17 @@ import s from './States.module.css'
 
 export function LoadingState({ label = '正在加载' }: { label?: string }) {
   return (
-    <div className={s.loading}>
-      <BeautifulLoadingState label={label} />
+    <div className={s.loading} role="status" aria-label={label} aria-busy="true">
+      <span className="visually-hidden">{label}</span>
+      <div className={s.skeleton} aria-hidden="true">
+        <span className={`${s.skeletonLine} ${s.skeletonHeading}`} />
+        <span className={`${s.skeletonLine} ${s.skeletonLead}`} />
+        <div className={s.skeletonRows}>
+          <span className={`${s.skeletonLine} ${s.skeletonLong}`} />
+          <span className={`${s.skeletonLine} ${s.skeletonMedium}`} />
+          <span className={`${s.skeletonLine} ${s.skeletonShort}`} />
+        </div>
+      </div>
     </div>
   )
 }
