@@ -3,20 +3,20 @@
 .stack {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: var(--sp-3);
 }
 
 .stackSm {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
 }
 
 /* 单列纵向阅读流 */
 .split {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: var(--sp-3);
   align-items: stretch;
 }
 
@@ -33,7 +33,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2) var(--sp-3);
-  padding: var(--sp-3) 0;
+  padding: 6px 0;
   border-bottom: 1px solid var(--line-strong);
 }
 
@@ -48,14 +48,15 @@
 }
 
 .panelBody {
-  padding: var(--sp-3) 0;
+  padding: 6px 0;
 }
 
 /* 键值对 */
 .meta {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: minmax(90px, 138px) minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  row-gap: 5px;
   font-size: var(--fs-13);
 }
 
@@ -66,7 +67,7 @@
 .meta dd {
   min-width: 0;
   overflow-wrap: anywhere;
-  margin-bottom: 8px;
+  margin: 0;
 }
 
 /* 列表上方的筛选和操作 */
@@ -74,8 +75,8 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
 }
 
 .toolbar > * {

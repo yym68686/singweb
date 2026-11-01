@@ -1,12 +1,12 @@
 .loading {
   width: 100%;
-  padding: var(--sp-5) 0;
+  padding: var(--sp-3) 0;
 }
 
 .skeleton {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
 }
 
 .skeletonLine {
@@ -32,9 +32,9 @@
 .skeletonRows {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
-  margin-top: var(--sp-2);
-  padding-top: var(--sp-4);
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-2);
   border-top: 1px solid var(--line);
 }
 
@@ -78,23 +78,24 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--sp-2);
-  padding: var(--sp-5) 4px;
+  gap: var(--sp-1);
+  padding: var(--sp-3) 2px;
   border-block: 1px solid var(--line);
 }
 
 .emptyIcon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   color: var(--ink-3);
 }
 
 .emptyTitle {
-  font-size: var(--fs-16);
+  font-size: var(--fs-14);
   font-weight: 600;
 }
 
 .emptyBody {
   max-width: 60ch;
   color: var(--ink-2);
+  font-size: var(--fs-13);
 }

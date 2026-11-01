@@ -117,22 +117,22 @@ function Hero({ c, rts, now }: Props) {
         <Icon aria-hidden />
       </span>
       <div className={s.heroText}>
-        <h1 id="overview-title" className={s.headline}>
-          {title}
-        </h1>
+        <div className={s.heroLine}>
+          <h1 id="overview-title" className={s.headline}>{title}</h1>
+          {action && <div className={s.heroAction}>{action}</div>}
+        </div>
         <p className={s.summary}>
-          {online} 台设备在线{offline > 0 && `，${offline} 台离线`}，共 {rts.length} 个出口。
+          {online} 在线 · {offline} 离线 · {rts.length} 个出口
           {last?.lastSwitch && (
             <>
-              最近一次切换：{keepNames(c.device.get(last.deviceId)?.name ?? '')} 的「{c.group.get(last.groupId)?.name}」
+              {' '}· 最近切换 {keepNames(c.device.get(last.deviceId)?.name ?? '')} · {keepNames(c.group.get(last.groupId)?.name ?? '')}
               <time dateTime={last.lastSwitch.at} title={formatFull(last.lastSwitch.at)}>
                 {timeAgo(last.lastSwitch.at, now)}
               </time>
-              {keepNames(hopText(last.lastSwitch.from, last.lastSwitch.to, c))}。
+              {' '}{keepNames(hopText(last.lastSwitch.from, last.lastSwitch.to, c))}
             </>
           )}
         </p>
-        {action && <div className={s.heroAction}>{action}</div>}
       </div>
     </section>
   )
@@ -140,7 +140,16 @@ function Hero({ c, rts, now }: Props) {
 
 /** 除了“正常”和“手动选择”以外的出口，按严重程度排列 */
 function Attention({ c, rts, now }: Props) {
-  const items = rts.filter((r) => r.state !== 'ok' && r.state !== 'manual').sort(byRank)
+  const seenOffline = new Set<string>()
+  const items = rts
+    .filter((r) => r.state !== 'ok' && r.state !== 'manual')
+    .sort(byRank)
+    .filter((r) => {
+      if (r.state !== 'stale') return true
+      if (seenOffline.has(r.deviceId)) return false
+      seenOffline.add(r.deviceId)
+      return true
+    })
   if (!items.length) return null
   return (
     <Section title="需要注意" id="attention" collapsible defaultOpen summary={<span className={s.attentionCount}>{items.length} 项</span>} className={s.attention}>
@@ -154,9 +163,9 @@ function Attention({ c, rts, now }: Props) {
                 <p className={s.attnTitle}>{runtimeLabel[r.state]}</p>
                 <p className={s.attnWhere}>
                   <Link to={`/devices/${r.deviceId}`}>{keepNames(c.device.get(r.deviceId)?.name ?? r.deviceId)}</Link>
-                  ，{c.group.get(r.groupId)?.name ?? r.groupId}
+                  {r.state === 'stale' ? ' · 设备级' : ` · ${c.group.get(r.groupId)?.name ?? r.groupId}`}
                 </p>
-                <p className={s.attnText}>{keepNames(runtimeNote(r, c, now))}</p>
+                {r.state !== 'stale' && <p className={s.attnText}>{keepNames(runtimeNote(r, c, now))}</p>}
               </div>
             </li>
           )
@@ -172,7 +181,6 @@ function Outlets({ c, rts, now }: Props) {
   return (
     <Section
       title="当前出口"
-      description="展开设备查看各分组的当前出口，再展开候选节点查看探测详情。"
       collapsible
       defaultOpen
       className={s.outlets}
@@ -243,8 +251,8 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
           })}
         </ul>
       ) : (
-        <p className={cx(page.panelBody, page.sub)}>
-          这台设备还没有应用任何分组。到<Link to="/groups">分组</Link>里把它加进去。
+          <p className={cx(page.panelBody, page.sub)}>
+          未应用分组 · <Link to="/groups">去分组设置</Link>
         </p>
       )}
     </Disclosure>
@@ -260,9 +268,7 @@ function RecentEvents({ c, now }: { c: Catalog; now: number }) {
         items.length ? (
           <EventList events={items} catalog={c} now={now} compact />
         ) : (
-          <EmptyState icon={ClockFading} title="还没有事件">
-            切换节点、节点故障和恢复都会记录在这里。
-          </EmptyState>
+          <EmptyState icon={ClockFading} title="暂无事件" />
         )
       ) : events.error ? (
         <ErrorState error={events.error} onRetry={() => void events.refetch()} />

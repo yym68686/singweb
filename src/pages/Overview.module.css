@@ -1,11 +1,11 @@
 /* 顶部的一句话状态 */
 
 .hero {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
-  align-items: stretch;
-  padding-bottom: var(--sp-5);
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: start;
+  padding-bottom: var(--sp-3);
   border-bottom: 1px solid var(--line-strong);
 }
 
@@ -13,15 +13,15 @@
 .lamp {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   margin-top: 2px;
   border-radius: var(--r-btn);
 }
 
 .lamp svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 
 .good .lamp {
@@ -46,27 +46,33 @@
   min-width: 0;
 }
 
+.heroLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+}
+
 .headline {
-  font-size: clamp(24px, 1.6vw + 14px, 36px);
+  font-size: clamp(20px, 1vw + 14px, 24px);
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.01em;
 }
 
 .summary {
-  max-width: 72ch;
+  max-width: 86ch;
   color: var(--ink-2);
+  font-size: var(--fs-13);
 }
 
 .heroAction {
-  margin-top: var(--sp-2);
+  margin-left: auto;
 }
 
 @media (max-width: 480px) {
-  .lamp {
-    width: 36px;
-    height: 36px;
-  }
+  .hero { grid-template-columns: 32px minmax(0, 1fr); }
+  .lamp { width: 32px; height: 32px; }
 }
 
 /* 所有区块保持单列 */
@@ -74,7 +80,7 @@
 .grid {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: var(--sp-3);
   align-items: stretch;
 }
 
@@ -123,7 +129,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: var(--sp-3) var(--sp-4) var(--sp-3) 13px;
+  padding: 7px var(--sp-2) 7px 9px;
   border-left: 3px solid transparent;
 }
 

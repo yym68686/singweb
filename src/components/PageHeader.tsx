@@ -3,7 +3,6 @@ import { Link } from 'react-router'
 import { ChevronLeft } from 'lucide-react'
 import { Disclosure } from './Disclosure'
 import { useTitle } from '../lib/useTitle'
-import { keepNames } from '../lib/keepNames'
 import s from './PageHeader.module.css'
 
 interface PageHeaderProps {
@@ -15,7 +14,7 @@ interface PageHeaderProps {
   back?: { to: string; label: string }
 }
 
-export function PageHeader({ title, docTitle, description, actions, back }: PageHeaderProps) {
+export function PageHeader({ title, docTitle, actions, back }: PageHeaderProps) {
   useTitle(docTitle ?? (typeof title === 'string' ? title : undefined))
   return (
     <header className={s.header}>
@@ -28,7 +27,6 @@ export function PageHeader({ title, docTitle, description, actions, back }: Page
       <div className={s.row}>
         <div className={s.text}>
           <h1 className={s.title}>{title}</h1>
-          {description && <div className={s.desc}>{keepNames(description)}</div>}
         </div>
         {actions && <div className={s.actions}>{actions}</div>}
       </div>
@@ -50,11 +48,10 @@ interface SectionProps {
 }
 
 /** 页面里的一个区块：二级标题、说明和右侧操作 */
-export function Section({ title, summary, description, actions, children, className, id, collapsible, defaultOpen, labelledBy }: SectionProps) {
+export function Section({ title, summary, actions, children, className, id, collapsible, defaultOpen, labelledBy }: SectionProps) {
   if (collapsible) {
     return (
       <Disclosure title={title} meta={summary} id={id} defaultOpen={defaultOpen} className={className} labelledBy={labelledBy ?? (id ? `${id}-title` : undefined)} headingLevel={2} labelClassName={s.sectionTitle}>
-        {description && <div className={s.sectionDesc}>{keepNames(description)}</div>}
         {actions && <div className={s.actions}>{actions}</div>}
         {children}
       </Disclosure>
@@ -67,7 +64,6 @@ export function Section({ title, summary, description, actions, children, classN
           <h2 id={id ? `${id}-title` : undefined} className={s.sectionTitle}>
             {title}
           </h2>
-          {description && <div className={s.sectionDesc}>{keepNames(description)}</div>}
         </div>
         {actions && <div className={s.actions}>{actions}</div>}
       </div>

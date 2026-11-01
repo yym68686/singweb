@@ -1,7 +1,7 @@
 .days {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-3);
 }
 
 .dayTitle {
@@ -23,10 +23,11 @@
 }
 
 .row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  padding: 14px 4px;
+  display: grid;
+  grid-template-columns: 48px 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  padding: 7px 4px;
   border-left: 3px solid transparent;
 }
 
@@ -129,8 +130,7 @@
 /* 紧凑模式用在总览的侧栏里 */
 
 .compact .row {
-  flex-direction: column;
-  padding: 10px var(--sp-3);
+  padding: 8px var(--sp-2);
 }
 
 .compact .time {
@@ -147,7 +147,7 @@
 }
 
 .compact .head {
-  padding-right: 72px;
+  padding-right: 0;
 }
 
 .compact .message {
@@ -156,8 +156,8 @@
 
 @media (max-width: 640px) {
   .row {
-    flex-direction: column;
-    padding: 10px var(--sp-3);
+    grid-template-columns: 48px 18px minmax(0, 1fr);
+    padding: 8px var(--sp-2);
   }
 
   .time { padding: 0; font-size: var(--fs-12); }

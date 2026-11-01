@@ -1,8 +1,8 @@
 .header {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-5);
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-3);
 }
 
 .back {
@@ -27,8 +27,8 @@
 
 .row {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: center;
   gap: var(--sp-3);
 }
 
@@ -41,13 +41,12 @@
 }
 
 .title {
-  font-size: var(--fs-24);
+  font-size: 22px;
   line-height: 1.25;
 }
 
 .desc {
-  max-width: 72ch;
-  color: var(--ink-2);
+  display: none;
 }
 
 .actions {
@@ -55,6 +54,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
+  margin-left: auto;
 }
 
 .sectionHead {
@@ -62,7 +62,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
+  margin-bottom: var(--sp-2);
 }
 
 .sectionTitle {
@@ -70,7 +70,10 @@
 }
 
 .sectionDesc {
-  max-width: 72ch;
-  color: var(--ink-2);
-  font-size: var(--fs-13);
+  display: none;
+}
+
+@media (max-width: 540px) {
+  .row { align-items: flex-start; }
+  .actions { margin-left: 0; }
 }

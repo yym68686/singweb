@@ -7,26 +7,30 @@
 
 /* 与表单字段的标签一致 */
 .legend {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   padding: 0;
   font-weight: 600;
 }
 
 .segs {
   display: flex;
-  flex-direction: column;
-  border-block: 1px solid var(--line);
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--line) 68%, transparent);
 }
 
 .seg {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 6px;
-  min-height: calc(var(--control-h) - 6px);
-  padding: 0 12px;
-  border-radius: 0;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: var(--r-pill);
   color: var(--ink-2);
   font-size: var(--fs-13);
   font-weight: 500;
@@ -52,11 +56,10 @@
 }
 
 .seg:has(.radio:checked) {
-  border-left: 2px solid var(--accent);
-  background: transparent;
+  background: var(--surface);
   color: var(--ink);
   font-weight: 600;
-  box-shadow: none;
+  box-shadow: var(--shadow-btn);
 }
 
 .seg:has(.radio:focus-visible) {
