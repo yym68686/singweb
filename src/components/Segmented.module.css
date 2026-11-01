@@ -13,22 +13,20 @@
 }
 
 .segs {
-  display: grid;
-  padding: 2px;
-  border: 1px solid var(--field-border);
-  border-radius: var(--r-btn);
-  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  border-block: 1px solid var(--line);
 }
 
 .seg {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   min-height: calc(var(--control-h) - 6px);
   padding: 0 12px;
-  border-radius: 4px;
+  border-radius: 0;
   color: var(--ink-2);
   font-size: var(--fs-13);
   font-weight: 500;
@@ -54,12 +52,11 @@
 }
 
 .seg:has(.radio:checked) {
-  background: var(--panel);
+  border-left: 2px solid var(--accent);
+  background: transparent;
   color: var(--ink);
   font-weight: 600;
-  box-shadow:
-    0 0 0 1px var(--line-strong),
-    0 1px 2px rgb(0 0 0 / 0.08);
+  box-shadow: none;
 }
 
 .seg:has(.radio:focus-visible) {

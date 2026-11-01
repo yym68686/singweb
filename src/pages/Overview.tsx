@@ -7,8 +7,9 @@ import type { Device, GroupRuntime } from '../api/types'
 import { Badge, RuntimeBadge, ToneIcon } from '../components/Badge'
 import { ButtonLink } from '../components/Button'
 import { EventList } from '../components/EventList'
+import { Disclosure } from '../components/Disclosure'
 import { Section } from '../components/PageHeader'
-import { RouteLegend, RouteStrip } from '../components/RouteStrip'
+import { RouteStrip } from '../components/RouteStrip'
 import { EmptyState, ErrorState, Loadable, LoadingState } from '../components/States'
 import { cx } from '../lib/cx'
 import { hopText, runtimeHeadline, runtimeNote } from '../lib/explain'
@@ -64,11 +65,27 @@ function Hero({ c, rts, now }: Props) {
   const degraded = rts.filter((r) => r.state === 'degraded')
   const online = c.devices.filter((d) => d.online).length
   const offline = c.devices.length - online
+  const brokenDevices = c.devices.filter((device) => device.online && device.singboxError)
 
   let tone: 'crit' | 'warn' | 'good'
   let title: string
   let action: ReactNode = null
-  if (critical.length === 1) {
+  if (!c.devices.length) {
+    tone = 'good'
+    title = '接入第一台设备'
+    action = <ButtonLink to="/devices" variant="primary" icon={Laptop}>接入设备</ButtonLink>
+  } else if (!online) {
+    tone = 'warn'
+    title = '所有设备都已离线'
+    action = <ButtonLink to="/devices" icon={Laptop}>检查设备</ButtonLink>
+  } else if (brokenDevices.length) {
+    tone = 'crit'
+    title = `${brokenDevices.length} 台设备的 sing-box 未正常运行`
+    action = <ButtonLink to={`/devices/${brokenDevices[0].id}`} variant="primary" icon={Laptop}>查看故障设备</ButtonLink>
+  } else if (!rts.length) {
+    tone = 'warn'
+    title = '等待设备上报出口状态'
+  } else if (critical.length === 1) {
     const r = critical[0]
     const d = c.device.get(r.deviceId)
     tone = 'crit'
@@ -126,7 +143,7 @@ function Attention({ c, rts, now }: Props) {
   const items = rts.filter((r) => r.state !== 'ok' && r.state !== 'manual').sort(byRank)
   if (!items.length) return null
   return (
-    <Section title="需要注意" id="attention" className={s.attention}>
+    <Section title="需要注意" id="attention" collapsible defaultOpen summary={<span className={s.attentionCount}>{items.length} 项</span>} className={s.attention}>
       <ul className={cx(page.panel, s.attnList)}>
         {items.map((r) => {
           const look = runtimeLook[r.state]
@@ -155,8 +172,9 @@ function Outlets({ c, rts, now }: Props) {
   return (
     <Section
       title="当前出口"
-      description="每一行是设备上的一个分组：跳线插在哪个节点上，这个分组接管的流量就从哪个节点出去。把鼠标移到节点上可以看到探测详情。"
-      actions={<RouteLegend />}
+      description="展开设备查看各分组的当前出口，再展开候选节点查看探测详情。"
+      collapsible
+      defaultOpen
       className={s.outlets}
     >
       {devices.length ? (
@@ -184,12 +202,12 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
     .at(-1)
 
   return (
-    <article className={page.panel} aria-labelledby={`dev-${d.id}`}>
+    <Disclosure title={d.name} meta={<>{d.online && d.singboxError ? 'sing-box 故障' : d.online ? '在线' : `离线 · ${timeAgo(d.lastSeenAt, now)}`}<span>{groups.length} 个分组</span></>} headingLevel={3}>
       <header className={page.panelHead}>
-        <h3 id={`dev-${d.id}`} className={page.panelTitle}>
+        <div className={page.panelTitle}>
           <Link to={`/devices/${d.id}`}>{d.name}</Link>
           <span className={cx('mono', page.sub)}>{d.hostname}</span>
-        </h3>
+        </div>
         {d.online ? (
           lastRound && (
             <span className={page.sub}>
@@ -206,21 +224,11 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
         <ul className={s.routes}>
           {groups.map((g) => {
             const rt = mine.find((r) => r.groupId === g.id)
+            const switchSummary = rt?.lastSwitch && <span className={s.lastSwitch}><time dateTime={rt.lastSwitch.at} title={formatFull(rt.lastSwitch.at)}>{timeAgo(rt.lastSwitch.at, now)}</time> {keepNames(hopText(rt.lastSwitch.from, rt.lastSwitch.to, c))}</span>
             return (
-              <li key={g.id} className={s.route}>
-                <div className={s.routeHead}>
-                  <span className={s.group}>{g.name}</span>
-                  {rt && <RuntimeBadge state={rt.state} />}
-                  {rt?.lastSwitch && (
-                    <span className={s.lastSwitch}>
-                      <time dateTime={rt.lastSwitch.at} title={formatFull(rt.lastSwitch.at)}>
-                        {timeAgo(rt.lastSwitch.at, now)}
-                      </time>
-                      {keepNames(hopText(rt.lastSwitch.from, rt.lastSwitch.to, c))}
-                    </span>
-                  )}
-                </div>
-                {rt ? (
+              <li key={g.id}>
+                <Disclosure title={g.name} headingLevel={4} className={s.route} meta={<>{rt ? <RuntimeBadge state={rt.state} /> : '等待 Agent 上报'}{switchSummary}</>}>
+                  {rt ? (
                   <RouteStrip
                     runtime={rt}
                     group={g}
@@ -228,9 +236,8 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
                     targets={c.target}
                     label={`${d.name}「${g.name}」的当前出口`}
                   />
-                ) : (
-                  <p className={page.sub}>Agent 还没有上报这个分组的状态。</p>
-                )}
+                  ) : <p className={page.sub}>Agent 还没有上报这个分组的状态。</p>}
+                </Disclosure>
               </li>
             )
           })}
@@ -240,7 +247,7 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
           这台设备还没有应用任何分组。到<Link to="/groups">分组</Link>里把它加进去。
         </p>
       )}
-    </article>
+    </Disclosure>
   )
 }
 
@@ -248,7 +255,7 @@ function RecentEvents({ c, now }: { c: Catalog; now: number }) {
   const events = useEvents({ limit: 8 })
   const items = events.data?.pages[0]?.items
   return (
-    <Section title="最近事件" className={s.events} actions={<Link to="/events">查看全部事件</Link>}>
+    <Section title="最近事件" collapsible className={s.events} actions={<Link to="/events">查看全部事件</Link>}>
       {items ? (
         items.length ? (
           <EventList events={items} catalog={c} now={now} compact />

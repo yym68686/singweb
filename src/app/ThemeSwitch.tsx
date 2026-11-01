@@ -1,5 +1,5 @@
 import { useId, useSyncExternalStore } from 'react'
-import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
+import { ChevronDown, Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
 import { getThemePref, setThemePref, subscribeThemePref, type ThemePref } from '../lib/theme'
 import s from './ThemeSwitch.module.css'
 
@@ -13,28 +13,22 @@ const OPTIONS: { value: ThemePref; label: string; hidden?: string; icon: LucideI
 export function ThemeSwitch() {
   const pref = useSyncExternalStore(subscribeThemePref, getThemePref)
   const name = useId()
+  const selected = OPTIONS.find((option) => option.value === pref)?.label ?? '系统'
   return (
-    <fieldset className={s.group}>
-      <legend className={s.legend}>外观</legend>
-      <div className={s.segs}>
-        {OPTIONS.map((o) => (
-          <label key={o.value} className={s.seg}>
-            <input
-              type="radio"
-              className={s.radio}
-              name={name}
-              value={o.value}
-              checked={pref === o.value}
-              onChange={() => setThemePref(o.value)}
-            />
-            <o.icon aria-hidden />
-            <span>
-              {o.hidden && <span className="visually-hidden">{o.hidden}</span>}
-              {o.label}
-            </span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
+    <details className={s.details}>
+      <summary className={s.summary}><span>外观</span><span className={s.current}>{selected}</span><ChevronDown aria-hidden /></summary>
+      <fieldset className={s.group}>
+        <legend className="visually-hidden">选择外观</legend>
+        <div className={s.segs}>
+          {OPTIONS.map((o) => (
+            <label key={o.value} className={s.seg}>
+              <input type="radio" className={s.radio} name={name} value={o.value} checked={pref === o.value} onChange={() => setThemePref(o.value)} />
+              <o.icon aria-hidden />
+              <span>{o.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    </details>
   )
 }

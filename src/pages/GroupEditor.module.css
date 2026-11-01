@@ -1,56 +1,41 @@
-/* 表单在左，配置预览在右；窄屏时预览落到下面 */
+/* 表单与按需展开的预览保持单列 */
 .layout {
-  display: grid;
-  /* 同 page.split：不让内容撑宽窄屏上的单列 */
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-6);
-  align-items: start;
+  align-items: stretch;
 }
 
-@media (min-width: 1180px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-  }
-
-  .aside {
-    position: sticky;
-    top: var(--sp-5);
-  }
-}
+.aside { width: 100%; }
 
 .body {
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
-  padding: var(--sp-4);
+  padding: var(--sp-4) 0;
 }
 
 @media (min-width: 640px) {
   .body {
-    padding: var(--sp-5);
+    padding: var(--sp-5) 0;
   }
 }
 
 .row2 {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-4);
-  align-items: start;
-}
-
-@media (min-width: 720px) {
-  .row2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 .cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-2);
 }
 
 .stackCards {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-2);
   max-width: 640px;
 }
@@ -83,17 +68,16 @@
 }
 
 .numbers {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-4);
   align-items: start;
 }
 
 .timing {
   max-width: 72ch;
-  padding: 10px 12px;
-  border-radius: var(--r-input);
-  background: var(--panel-2);
+  padding: 10px 0;
+  border-block: 1px solid var(--line);
   font-size: var(--fs-13);
 }
 
@@ -109,9 +93,7 @@
 .order {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-panel);
-  background: var(--field);
+  border-block: 1px solid var(--line-strong);
 }
 
 .orderItem {
@@ -169,21 +151,20 @@
 
 .orderEmpty {
   padding: var(--sp-4);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-panel);
+  border-block: 1px dashed var(--line-strong);
   color: var(--ink-2);
 }
 
 .addRow {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--sp-2);
   margin-top: var(--sp-4);
 }
 
 .addRow > :first-child {
-  flex: 0 1 360px;
+  flex: none;
   min-width: 0;
 }
 
@@ -194,25 +175,23 @@
   bottom: var(--sp-3);
   z-index: 10;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--sp-2) var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-panel);
-  background: var(--panel);
-  box-shadow: var(--shadow-float);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line-strong);
+  background: var(--ground);
 }
 
 .footerStatus {
-  flex: 1 1 220px;
+  flex: none;
   min-width: 0;
 }
 
 /* 两个按钮一起换行，不拆到两行 */
 .footerActions {
   display: flex;
+  flex-direction: column;
   gap: var(--sp-3);
 }
 
@@ -233,14 +212,12 @@
 }
 
 .danger {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .danger p {
-  flex: 1 1 320px;
+  flex: none;
   max-width: 64ch;
   color: var(--ink-2);
 }
@@ -263,8 +240,7 @@
 
 .previewEmpty {
   padding: var(--sp-5) var(--sp-4);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-panel);
+  border-block: 1px dashed var(--line-strong);
   color: var(--ink-2);
   font-size: var(--fs-13);
 }
@@ -301,17 +277,16 @@
 }
 
 .checkGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-2) var(--sp-4);
 }
 
 /* 接管条件的实时摘要 */
 .summary {
   max-width: 72ch;
-  padding: 10px 12px;
-  border-radius: var(--r-input);
-  background: var(--panel-2);
+  padding: 10px 0;
+  border-block: 1px solid var(--line);
   font-size: var(--fs-13);
 }
 
@@ -360,7 +335,8 @@
 
 /* 添加规则对话框 */
 .pickList {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-2);
 }
 

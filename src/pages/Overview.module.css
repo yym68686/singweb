@@ -1,10 +1,10 @@
 /* 顶部的一句话状态 */
 
 .hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-4);
-  align-items: start;
+  align-items: stretch;
   padding-bottom: var(--sp-5);
   border-bottom: 1px solid var(--line-strong);
 }
@@ -63,56 +63,35 @@
 }
 
 @media (max-width: 480px) {
-  .hero {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .lamp {
     width: 36px;
     height: 36px;
   }
 }
 
-/* 主体：窄屏时“需要注意”排在最前面；宽屏时放到右栏 */
+/* 所有区块保持单列 */
 
 .grid {
-  display: grid;
-  grid-template-areas:
-    'attention'
-    'outlets'
-    'events';
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-6);
-  align-items: start;
+  align-items: stretch;
 }
 
 .attention {
-  grid-area: attention;
   min-width: 0;
 }
 
 .outlets {
-  grid-area: outlets;
   min-width: 0;
 }
 
 .events {
-  grid-area: events;
   min-width: 0;
 }
 
-@media (min-width: 1180px) {
-  .grid {
-    grid-template-columns: minmax(0, 1fr) 360px;
-    grid-template-rows: auto 1fr;
-    grid-template-areas:
-      'outlets attention'
-      'outlets events';
-  }
-
-  .attention:empty {
-    display: none;
-  }
-}
+.attention:empty { display: none; }
+.attentionCount { color: var(--red); font-weight: 650; }
 
 /* 设备面板里的每个分组 */
 
@@ -121,30 +100,14 @@
   flex-direction: column;
 }
 
-.route {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4) var(--sp-4);
-}
-
-.route + .route {
+.routes > li + li {
   border-top: 1px solid var(--line);
 }
 
-.routeHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-}
-
-.group {
-  font-weight: 600;
-}
+.route { border-top: 0; }
+.route > summary > :last-child { display: flex; flex-direction: column; align-items: flex-start; }
 
 .lastSwitch {
-  margin-left: auto;
   color: var(--ink-2);
   font-size: var(--fs-13);
 }
@@ -157,8 +120,8 @@
 }
 
 .attnItem {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  display: flex;
+  align-items: flex-start;
   gap: 10px;
   padding: var(--sp-3) var(--sp-4) var(--sp-3) 13px;
   border-left: 3px solid transparent;
@@ -169,6 +132,7 @@
 }
 
 .attnItem svg {
+  flex: none;
   margin-top: 2px;
 }
 

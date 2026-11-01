@@ -38,6 +38,8 @@ import { Check, Field, Fieldset, Select, TextArea, TextInput, UnitInput } from '
 import { Menu } from '../components/Menu'
 import { Notice } from '../components/Notice'
 import { PageHeader, Section } from '../components/PageHeader'
+import { revealElement } from '../components/Disclosure'
+import { Disclosure } from '../components/Disclosure'
 import { Segmented } from '../components/Segmented'
 import { EmptyState, Loadable } from '../components/States'
 import {
@@ -362,6 +364,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
     if (!field) return
     focusNext.current = null
     const box = formRef.current?.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`)
+    revealElement(box)
     const el = box?.querySelector<HTMLElement>(
       'input:not(:disabled), select:not(:disabled), textarea, button:not(:disabled)',
     )
@@ -482,7 +485,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
       <div className={s.layout}>
         <div className={page.stack}>
           <form ref={formRef} className={page.stack} onSubmit={onSubmit} noValidate>
-            <Section title="基本信息" id="basics">
+            <Section title="基本信息" id="basics" collapsible defaultOpen>
               <div className={cx(page.panel, s.body)}>
                 <div className={s.row2}>
                   <div data-field="name">
@@ -576,6 +579,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
             <Section
               title="接管哪些流量"
               id="match"
+              collapsible
               description="符合条件的连接交给这个分组的 selector，其余流量不受影响。一项都不设，就是兜底分组：别的分组没接管的流量都走它。"
             >
               <div className={cx(page.panel, s.body)}>
@@ -712,7 +716,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               </div>
             </Section>
 
-            <Section title="候选节点" id="nodes" description="selector 只在这些节点之间切换。停用的节点会被跳过。">
+            <Section title="候选节点" id="nodes" collapsible description="selector 只在这些节点之间切换。停用的节点会被跳过。">
               <div className={cx(page.panel, s.body)}>
                 <Segmented
                   legend="加入方式"
@@ -744,6 +748,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
             <Section
               title="分组规则"
               id="rules"
+              collapsible
               description={
                 <>
                   按规则自动切换时，Agent 经过每个候选节点检查这些规则，只选用通过的节点。规则用到的目标在
@@ -832,6 +837,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
             <Section
               title="切换设置"
               id="switching"
+              collapsible
               description={auto ? undefined : '手动选择的分组不探测，只需要决定切换时要不要断开已有连接。'}
             >
               <div className={cx(page.panel, s.body)}>
@@ -935,6 +941,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               <Section
                 title="全部节点都不可用时"
                 id="all-fail"
+                collapsible
                 description="无论选哪种，都会记一条严重事件并在总览页提醒。"
               >
                 <div className={cx(page.panel, s.body)}>
@@ -995,7 +1002,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
           </form>
 
           {group && (
-            <Section title="删除分组" id="delete">
+            <Section title="删除分组" id="delete" collapsible>
               <div className={cx(page.panel, s.body, s.danger)}>
                 <p>
                   删除后，应用它的设备会移除 selector <span className="mono">{keepNames(group.selectorTag)}</span>{' '}
@@ -1011,8 +1018,10 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
           )}
         </div>
 
-        <aside className={s.aside} aria-labelledby="preview-title">
-          <Preview input={input} devices={devices} groupId={group?.id} />
+        <aside className={s.aside}>
+          <Disclosure title="配置预览" headingLevel={2} labelledBy="preview-title" lazy>
+            <Preview input={input} devices={devices} groupId={group?.id} />
+          </Disclosure>
         </aside>
       </div>
 
@@ -1654,9 +1663,6 @@ function Preview({ input, devices, groupId }: PreviewProps) {
   return (
     <div className={s.preview}>
       <div>
-        <h2 id="preview-title" className={s.previewTitle}>
-          配置预览
-        </h2>
         <p className={page.sub}>
           这台设备的整份 <span className="nowrap">sing-box</span> 配置：这个分组保存后会变成里面的 selector
           和路由规则。密钥位置是占位符，真正的密钥由 Agent 在本机生成。

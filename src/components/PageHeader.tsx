@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ChevronLeft } from 'lucide-react'
+import { Disclosure } from './Disclosure'
 import { useTitle } from '../lib/useTitle'
 import { keepNames } from '../lib/keepNames'
 import s from './PageHeader.module.css'
@@ -37,15 +38,28 @@ export function PageHeader({ title, docTitle, description, actions, back }: Page
 
 interface SectionProps {
   title: ReactNode
+  summary?: ReactNode
   description?: ReactNode
   actions?: ReactNode
   children: ReactNode
   className?: string
   id?: string
+  collapsible?: boolean
+  defaultOpen?: boolean
+  labelledBy?: string
 }
 
 /** 页面里的一个区块：二级标题、说明和右侧操作 */
-export function Section({ title, description, actions, children, className, id }: SectionProps) {
+export function Section({ title, summary, description, actions, children, className, id, collapsible, defaultOpen, labelledBy }: SectionProps) {
+  if (collapsible) {
+    return (
+      <Disclosure title={title} meta={summary} id={id} defaultOpen={defaultOpen} className={className} labelledBy={labelledBy ?? (id ? `${id}-title` : undefined)} headingLevel={2} labelClassName={s.sectionTitle}>
+        {description && <div className={s.sectionDesc}>{keepNames(description)}</div>}
+        {actions && <div className={s.actions}>{actions}</div>}
+        {children}
+      </Disclosure>
+    )
+  }
   return (
     <section id={id} className={className} aria-labelledby={id ? `${id}-title` : undefined}>
       <div className={s.sectionHead}>

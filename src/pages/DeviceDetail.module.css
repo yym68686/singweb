@@ -2,9 +2,8 @@
 
 .state {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--sp-3) var(--sp-5);
   padding: var(--sp-4);
 }
@@ -27,8 +26,8 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 0 1 240px;
-  min-width: 200px;
+  width: 100%;
+  min-width: 0;
 }
 
 .pinLabel {
@@ -38,11 +37,11 @@
 }
 
 .strip {
-  padding: 0 var(--sp-4) var(--sp-4);
+  padding: 0 4px 12px;
 }
 
 .note {
-  padding: 0 var(--sp-4) var(--sp-4);
+  padding: 0 4px 12px;
 }
 
 /*
@@ -51,12 +50,12 @@
  * 在整屏的卡片里一眼能看出来。
  */
 .pending {
-  margin: 0 var(--sp-4) var(--sp-4);
+  margin: 0 4px 12px;
   padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-3);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--warn, var(--ink-3));
-  border-radius: var(--r-2);
-  background: var(--surface-2, transparent);
+  border: 0;
+  border-left: 3px solid var(--warn);
+  border-radius: 0;
+  background: transparent;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -147,14 +146,13 @@
 /* 可展开的配置片段 */
 
 .details > summary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  min-height: var(--control-h);
-  padding: 0 12px 0 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-btn);
-  background: var(--panel);
+  min-height: 44px;
+  padding: 8px 4px;
+  border-block: 1px solid var(--line);
+  background: transparent;
   font-size: var(--fs-14);
   font-weight: 600;
   list-style: none;
@@ -167,7 +165,7 @@
 }
 
 .details > summary:hover {
-  background: var(--panel-2);
+  color: var(--accent-ink);
 }
 
 .details > summary:focus-visible {

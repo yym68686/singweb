@@ -67,3 +67,8 @@
   margin-top: 1px;
   color: var(--crit);
 }
+
+.targets { display: flex; flex-direction: column; }
+.targetDetail { display: flex; flex-direction: column; gap: 10px; padding: 0 4px 14px; }
+.targetLine { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.targetLabel { color: var(--ink-2); font-size: 12px; }

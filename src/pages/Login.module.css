@@ -1,9 +1,10 @@
 /* 登录页是独立一屏，没有侧栏，所以自己撑满视口并居中 */
 
 .page {
-  display: grid;
-  place-items: center;
-  align-content: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   min-height: 100dvh;
   padding: var(--sp-6) var(--sp-4);
   background: var(--ground);
@@ -12,11 +13,10 @@
 .card {
   width: 100%;
   max-width: 380px;
-  padding: var(--sp-6);
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel);
-  box-shadow: var(--shadow-float);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .head {

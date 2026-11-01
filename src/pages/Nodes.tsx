@@ -35,7 +35,7 @@ import type { GroupRuntime, HealthState, NodeSource, ProxyNode } from '../api/ty
 import { Badge, ToneIcon } from '../components/Badge'
 import { Button } from '../components/Button'
 import { CopyField } from '../components/CopyField'
-import { TableScroll } from '../components/DataTable'
+import { Disclosure } from '../components/Disclosure'
 import { ConfirmDialog, Dialog } from '../components/Dialog'
 import { Field, Switch, TextInput } from '../components/Form'
 import { PageHeader } from '../components/PageHeader'
@@ -247,31 +247,17 @@ function SourcesCard({ c, onImport }: { c: Catalog; onImport: () => void }) {
         ) : (
           <ul className={s.sources}>
             {sources.map((src) => (
-              <li key={src.id} className={cx(s.source, !src.enabled && s.sourceOff)}>
-                <div className={s.sourceHead}>
-                  <span className={t.name}>{src.name}</span>
-                  <SourceBadge src={src} />
-                </div>
-                <CopyField value={src.url} label={`复制「${src.name}」的订阅地址`} />
-                <p className={s.sourceMeta}>
-                  <SourceMeta src={src} />
-                </p>
-                <div className={s.sourceActions}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    icon={RotateCw}
-                    disabled={!src.enabled}
-                    title={src.enabled ? undefined : '订阅停用中，先在设置里打开'}
-                    pending={refresh.isPending && refresh.variables === src.id}
-                    onClick={() => doRefresh(src)}
-                  >
-                    立即刷新
-                  </Button>
-                  <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setEditing(src.id)}>
-                    设置
-                  </Button>
-                </div>
+              <li key={src.id} className={cx(!src.enabled && s.sourceOff)}>
+                <Disclosure title={src.name} headingLevel={3} labelClassName={t.name} meta={<><SourceBadge src={src} /><span>{src.enabled ? `${src.nodeCount} 个节点` : `${src.nodeCount} 个节点已停用`}</span></>}>
+                  <div className={s.sourceDetail}>
+                    <CopyField value={src.url} label={`复制「${src.name}」的订阅地址`} />
+                    <p className={s.sourceMeta}><SourceMeta src={src} /></p>
+                    <div className={s.sourceActions}>
+                      <Button size="sm" variant="ghost" icon={RotateCw} disabled={!src.enabled} title={src.enabled ? undefined : '订阅停用中，先在设置里打开'} pending={refresh.isPending && refresh.variables === src.id} onClick={() => doRefresh(src)}>立即刷新</Button>
+                      <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setEditing(src.id)}>设置</Button>
+                    </div>
+                  </div>
+                </Disclosure>
               </li>
             ))}
           </ul>
@@ -642,58 +628,26 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
       <p className={page.sub}>
         共 {c.nodes.length} 个节点，{enabled} 个启用，{inUse} 个正在作为出口。
       </p>
-      <TableScroll label="节点" minWidth={960}>
-        <table className={t.table}>
-          <thead>
-            <tr>
-              <th>节点</th>
-              <th>协议和地区</th>
-              <th>各设备上的探测</th>
-              <th>正在作为出口</th>
-              <th>来源</th>
-              <th className={t.actions}>启用</th>
-            </tr>
-          </thead>
-          <tbody>
-            {c.nodes.map((n) => (
-              <tr key={n.id}>
-                <td>
-                  <div className={s.tag}>
-                    <span className={t.name}>{n.tag}</span>
-                    {!n.enabled && (
-                      <Badge tone="offline" icon={CircleMinus}>
-                        已停用
-                      </Badge>
-                    )}
-                  </div>
-                  <div className={cx(t.sub, 'mono')}>
-                    {n.server}:{n.port}
-                  </div>
-                </td>
-                <td>
-                  <div>{protocolLabel[n.protocol]}</div>
-                  <div className={t.sub}>{n.region}</div>
-                </td>
-                <td>
-                  <Health n={n} c={c} rts={rts} usage={usage.get(n.id)} />
-                </td>
-                <td>
-                  <Outlets n={n} c={c} rts={rts} />
-                </td>
-                <td className={t.sub}>{n.source}</td>
-                <td className={t.actions}>
-                  <Switch
-                    checked={n.enabled}
-                    label={`启用 ${n.tag}`}
-                    pending={update.isPending && update.variables?.id === n.id}
-                    onChange={(v) => toggle(n, v)}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </TableScroll>
+      <ul className={s.nodes} aria-label="代理节点列表">
+        {c.nodes.map((n) => (
+          <li key={n.id}>
+            <Disclosure
+              title={n.tag}
+              headingLevel={2}
+              labelClassName={t.name}
+              meta={<>{!n.enabled && <Badge tone="offline" icon={CircleMinus}>已停用</Badge>}<span>{protocolLabel[n.protocol]} · {n.region}</span></>}
+            >
+              <div className={s.nodeDetails}>
+                <p className={cx(t.sub, 'mono')}>{n.server}:{n.port}</p>
+                <div><p className={s.detailLabel}>各设备上的探测</p><Health n={n} c={c} rts={rts} usage={usage.get(n.id)} /></div>
+                <div><p className={s.detailLabel}>正在作为出口</p><Outlets n={n} c={c} rts={rts} /></div>
+                <p className={t.sub}>来源：{n.source}</p>
+                <div className={s.enableRow}><span>启用这个节点</span><Switch checked={n.enabled} label={`启用 ${n.tag}`} pending={update.isPending && update.variables?.id === n.id} onChange={(v) => toggle(n, v)} /></div>
+              </div>
+            </Disclosure>
+          </li>
+        ))}
+      </ul>
 
       {confirm && (
         <DisableDialog

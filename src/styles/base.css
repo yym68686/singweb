@@ -1,3 +1,7 @@
+/* Keep base resets below Beautiful UI utilities in the CSS cascade. */
+body { background-image: none; }
+
+@layer base {
 *,
 *::before,
 *::after {
@@ -13,7 +17,7 @@ html {
 body {
   margin: 0;
   min-height: 100dvh;
-  background: var(--ground);
+  background-color: var(--ground);
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: var(--fs-14);
@@ -98,6 +102,10 @@ svg {
   flex-shrink: 0;
 }
 
+details { min-width: 0; }
+summary { cursor: pointer; }
+section, article, form { min-width: 0; }
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -149,4 +157,5 @@ svg {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
 }

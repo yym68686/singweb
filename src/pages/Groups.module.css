@@ -13,15 +13,10 @@
 }
 
 .body {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-5);
-  padding: var(--sp-4);
-}
-
-@media (min-width: 1080px) {
-  .body {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
-  }
+  padding: 0 4px 28px;
 }
 
 .rules {
@@ -36,12 +31,6 @@
   gap: var(--sp-2);
 }
 
-@media (min-width: 1080px) {
-  .devices {
-    padding-left: var(--sp-5);
-    border-left: 1px solid var(--line);
-  }
-}
 
 .devicesTitle {
   color: var(--ink-2);
@@ -50,17 +39,16 @@
 }
 
 .deviceList {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
-  gap: 8px 12px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
 }
 
 .device {
-  display: grid;
-  grid-template-columns: subgrid;
-  grid-column: 1 / -1;
-  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
 }
 
 .deviceName {

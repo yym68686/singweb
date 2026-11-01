@@ -174,10 +174,11 @@
 }
 
 .card {
-  padding: 10px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-panel);
-  background: var(--field);
+  padding: var(--sp-3) 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   transition:
     border-color var(--dur) var(--ease-out),
     background-color var(--dur) var(--ease-out);
@@ -189,8 +190,8 @@
 
 .card:has(input:checked) {
   border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .card:has(input:focus-visible) {
@@ -263,10 +264,9 @@
 .formError {
   display: flex;
   gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--crit);
-  border-radius: var(--r-panel);
-  background: var(--crit-soft);
+  padding: 10px 0 10px 12px;
+  border-left: 3px solid var(--crit);
+  background: transparent;
   color: var(--ink);
 }
 

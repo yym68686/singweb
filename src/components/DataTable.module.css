@@ -2,9 +2,9 @@
 
 /* 不在面板里的表格：外框自己画边框。横向滚动见 ScrollFrame */
 .wrap {
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .table {
@@ -13,9 +13,9 @@
 }
 
 .table th {
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
-  background: var(--panel-2);
+  background: transparent;
   color: var(--ink-2);
   font-size: var(--fs-13);
   font-weight: 600;

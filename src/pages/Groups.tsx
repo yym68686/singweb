@@ -6,6 +6,7 @@ import type { Group, GroupRuntime } from '../api/types'
 import { RuntimeBadge } from '../components/Badge'
 import { ButtonLink } from '../components/Button'
 import { PageHeader } from '../components/PageHeader'
+import { Disclosure } from '../components/Disclosure'
 import { EmptyState, Loadable } from '../components/States'
 import { candidateIds } from '../lib/candidates'
 import { cx } from '../lib/cx'
@@ -78,20 +79,17 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
   const strategy = auto ? `${strategyLabel[g.strategy]}：` : ''
 
   return (
-    <article className={page.panel} aria-labelledby={titleId}>
+    <Disclosure
+      title={g.name}
+      meta={<><span>{auto ? strategyLabel[g.strategy] : '手动选择'}</span><span>selector <span className="mono">{keepNames(g.selectorTag)}</span></span></>}
+      labelledBy={titleId}
+      headingLevel={2}
+      labelClassName={s.title}
+    >
       <header className={page.panelHead}>
-        <div className={page.panelTitle}>
-          <h2 id={titleId} className={s.title}>
-            <Link to={`/groups/${g.id}`}>{g.name}</Link>
-          </h2>
-          <span className={page.sub}>
-            selector <span className="mono">{keepNames(g.selectorTag)}</span>，
-            <time dateTime={g.updatedAt} title={formatFull(g.updatedAt)}>
-              {timeAgo(g.updatedAt, now)}
-            </time>
-            修改
-          </span>
-        </div>
+        <span className={page.sub}>
+          <time dateTime={g.updatedAt} title={formatFull(g.updatedAt)}>{timeAgo(g.updatedAt, now)}</time> 修改
+        </span>
         <ButtonLink
           to={`/groups/${g.id}`}
           size="sm"
@@ -151,7 +149,7 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
           <DeviceStatus g={g} c={c} rts={rts} />
         </div>
       </div>
-    </article>
+    </Disclosure>
   )
 }
 

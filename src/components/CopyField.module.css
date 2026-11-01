@@ -1,18 +1,18 @@
 .field {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   min-width: 0;
 }
 
 .row {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
   gap: var(--sp-2);
   min-width: 0;
-  padding: 6px 6px 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-input);
-  background: var(--panel-2);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 /* 链接很长，按任意字符折行，完整显示 */
@@ -28,7 +28,7 @@
 }
 
 .row > button {
-  flex: none;
+  align-self: flex-start;
 }
 
 .failed {

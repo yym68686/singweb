@@ -2,15 +2,14 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel-2);
+  border-block: 1px solid var(--line);
+  background: transparent;
 }
 
 .head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
   gap: var(--sp-3);
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--line);

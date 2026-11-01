@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Link, NavLink, Outlet, ScrollRestoration, type Location } from 'react-router'
+import { Link, NavLink, Outlet, ScrollRestoration, useLocation, type Location } from 'react-router'
 import {
   ClockFading,
   Gauge,
@@ -41,8 +41,6 @@ const CONFIG_NAV: NavItem[] = [
   { to: '/nodes', label: '节点', icon: Server },
 ]
 
-const WIDE = '(min-width: 960px)'
-
 /**
  * 滚动位置按历史记录保存。直接打开或输入地址时 react-router 给的 key 都是 "default"，
  * 会把上一个页面的位置套到新页面上，这种情况改按地址保存
@@ -58,37 +56,18 @@ export function Shell() {
   const [drawer, setDrawer] = useState(false)
   const close = () => setDrawer(false)
 
-  // 窗口变宽、侧栏出现后，收起抽屉
-  useEffect(() => {
-    const m = window.matchMedia(WIDE)
-    const onChange = () => m.matches && setDrawer(false)
-    m.addEventListener('change', onChange)
-    return () => m.removeEventListener('change', onChange)
-  }, [])
-
   return (
     <div className={s.shell}>
       <a href="#main" className={s.skip}>
         跳到主要内容
       </a>
 
-      <aside className={s.sidebar}>
-        <Brand />
-        <Nav critical={critical} />
-        <div className={s.sideFoot}>
-          <ThemeSwitch />
-          <AccountMenu />
-        </div>
-      </aside>
-
       <header className={s.topbar}>
-        <Button variant="ghost" icon={Menu} aria-label="打开导航" aria-expanded={drawer} onClick={() => setDrawer(true)} />
         <Brand />
-        {critical > 0 && (
-          <Link to="/" className={s.topCount}>
-            <CritCount n={critical} />
-          </Link>
-        )}
+        <div className={s.topActions}>
+          {critical > 0 && <Link to="/" className={s.topCount}><CritCount n={critical} /></Link>}
+          <Button variant="ghost" icon={Menu} aria-label="打开导航" aria-expanded={drawer} onClick={() => setDrawer(true)} />
+        </div>
       </header>
 
       <Drawer open={drawer} onClose={close}>
@@ -140,6 +119,9 @@ function CritCount({ n }: { n: number }) {
 
 function Nav({ critical, onNavigate }: { critical: number; onNavigate?: () => void }) {
   const configId = useId()
+  const location = useLocation()
+  const isConfigRoute = CONFIG_NAV.some(({ to }) => location.pathname === to || location.pathname.startsWith(`${to}/`))
+  const [configOpen, setConfigOpen] = useState(isConfigRoute)
   const item = (n: NavItem) => (
     <li key={n.to}>
       <NavLink to={n.to} end={n.end} className={({ isActive }) => (isActive ? `${s.link} ${s.active}` : s.link)} onClick={onNavigate}>
@@ -152,12 +134,10 @@ function Nav({ critical, onNavigate }: { critical: number; onNavigate?: () => vo
   return (
     <nav className={s.nav} aria-label="主导航">
       <ul className={s.navList}>{MAIN_NAV.map(item)}</ul>
-      <p className={s.navGroup} id={configId}>
-        配置
-      </p>
-      <ul className={s.navList} aria-labelledby={configId}>
-        {CONFIG_NAV.map(item)}
-      </ul>
+      <details className={s.config} open={configOpen} onToggle={(event) => setConfigOpen(event.currentTarget.open)}>
+        <summary className={s.navGroup} id={configId}>配置 <span aria-hidden>＋</span></summary>
+        <ul className={s.navList} aria-labelledby={configId}>{CONFIG_NAV.map(item)}</ul>
+      </details>
     </nav>
   )
 }

@@ -20,7 +20,7 @@ import type { Device, GroupRuntime } from '../api/types'
 import { Badge, RuntimeBadge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { CodeBlock } from '../components/CodeBlock'
-import { TableScroll } from '../components/DataTable'
+import { Disclosure } from '../components/Disclosure'
 import { Dialog } from '../components/Dialog'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented } from '../components/Segmented'
@@ -270,40 +270,24 @@ function Joined({ id, device, onOpen }: { id: string; device: Device | null; onO
 
 function DeviceTable({ c, rts, now }: { c: Catalog; rts: GroupRuntime[]; now: number }) {
   return (
-    <TableScroll label="设备" minWidth={820}>
-      <table className={t.table}>
-        <thead>
-          <tr>
-            <th>设备</th>
-            <th>连接</th>
-            <th>各分组的出口</th>
-            <th>系统和版本</th>
-          </tr>
-        </thead>
-        <tbody>
-          {c.devices.map((d) => (
-            <tr key={d.id}>
-              <td>
-                <Link to={`/devices/${d.id}`} className={t.name}>
-                  {d.name}
-                </Link>
-                <div className={cx(t.sub, 'mono')}>{d.hostname}</div>
-                {d.note && <div className={t.sub}>{d.note}</div>}
-              </td>
-              <td className={t.nowrap}>
-                <Presence d={d} now={now} />
-              </td>
-              <td>
-                <Outlets d={d} c={c} rts={rts} />
-              </td>
-              <td>
-                <Versions d={d} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </TableScroll>
+    <ul className={s.devices} aria-label="已接入的设备">
+      {c.devices.map((d) => (
+        <li key={d.id}>
+          <Disclosure title={d.name} headingLevel={2} meta={<><Badge tone={d.online && d.singboxError ? 'crit' : d.online ? 'good' : 'offline'} icon={d.online ? Wifi : WifiOff}>{d.online && d.singboxError ? 'sing-box 故障' : d.online ? '在线' : '离线'}</Badge><span><time dateTime={d.lastSeenAt} title={formatFull(d.lastSeenAt)}>{timeAgo(d.lastSeenAt, now)}</time> 上报</span></>}>
+            <div className={s.deviceDetails}>
+              <Link to={`/devices/${d.id}`} className={t.name}>查看设备详情</Link>
+              <p className={cx(t.sub, 'mono')}>{d.hostname}</p>
+              {d.note && <p>{d.note}</p>}
+              <h3 className={s.detailHeading}>分组出口</h3>
+              <Outlets d={d} c={c} rts={rts} />
+              <h3 className={s.detailHeading}>系统与版本</h3>
+              <Versions d={d} />
+              {d.online && <LocalProxy d={d} />}
+            </div>
+          </Disclosure>
+        </li>
+      ))}
+    </ul>
   )
 }
 

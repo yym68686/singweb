@@ -18,6 +18,7 @@ import { RouteStrip } from '../components/RouteStrip'
 import { EmptyState, ErrorState, Loadable, LoadingState } from '../components/States'
 import { useToast } from '../components/Toast'
 import { candidateIds, enabledCandidates } from '../lib/candidates'
+import { isCritical } from '../lib/status'
 import { cx } from '../lib/cx'
 import { hopText, runtimeNote } from '../lib/explain'
 import { formatFull, gapBefore, joinZh, ms, timeAgo } from '../lib/format'
@@ -138,7 +139,7 @@ function DeviceBody({ d, c, rts, now }: BodyProps) {
           </div>
         )}
 
-        <div className={page.split}>
+        <div className={page.stack}>
           <div className={page.stack}>
             {groups.length ? (
               groups.map((g) => (
@@ -179,6 +180,9 @@ function GroupPanel({ d, g, rt, c, now }: Omit<PanelProps, 'rt'> & { rt?: GroupR
     <Section
       id={`group-${g.id}`}
       title={g.name}
+      summary={rt ? <RuntimeBadge state={rt.state} /> : '等待 Agent 上报'}
+      collapsible
+      defaultOpen={!!rt && (isCritical(rt.state) || !!rt.pendingSwitch?.failedAt)}
       description={
         <>
           selector <span className="mono">{keepNames(g.selectorTag)}</span>，
@@ -600,7 +604,7 @@ function Snippet({ d }: { d: Device }) {
 
 function DeviceInfo({ d, now }: { d: Device; now: number }) {
   return (
-    <Section title="设备信息" id="device-info">
+    <Section title="设备信息" id="device-info" collapsible>
       <div className={cx(page.panel, page.panelBody)}>
         <dl className={page.meta}>
           <dt>主机名</dt>
@@ -654,6 +658,7 @@ function DeviceEvents({ d, c, now }: { d: Device; c: Catalog; now: number }) {
     <Section
       title="这台设备的事件"
       id="device-events"
+      collapsible
       actions={<Link to={`/events?device=${encodeURIComponent(d.id)}`}>查看全部</Link>}
     >
       {items ? (

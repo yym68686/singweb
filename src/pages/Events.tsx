@@ -88,7 +88,9 @@ function EventsBody({ c }: { c: Catalog }) {
 
   return (
     <div className={page.stackSm}>
-      <div className={cx(page.toolbar, s.toolbar)}>
+      <details className={s.filters}>
+        <summary><ListFilter aria-hidden />{filtered ? '筛选已启用' : '筛选事件'}</summary>
+        <div className={cx(page.toolbar, s.toolbar)}>
         <Field label="设备">
           {(a) => (
             <Select {...a} value={device?.id ?? ''} onChange={(e) => set('device', e.target.value)}>
@@ -137,7 +139,8 @@ function EventsBody({ c }: { c: Catalog }) {
             清除筛选
           </Button>
         )}
-      </div>
+        </div>
+      </details>
 
       {items === undefined ? (
         events.error ? (

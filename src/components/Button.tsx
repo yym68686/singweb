@@ -1,8 +1,8 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 import { Link, type LinkProps } from 'react-router'
 import { LoaderCircle, type LucideIcon } from 'lucide-react'
+import { buttonVariants } from '../vendor/beautiful-ui/Button'
 import { cx } from '../lib/cx'
-import s from './Button.module.css'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type Size = 'md' | 'sm'
@@ -34,7 +34,13 @@ export function Button({
   return (
     <button
       type={type}
-      className={cx(s.btn, s[variant], s[size], !children && s.iconOnly, className)}
+      className={cx(
+        buttonVariants({ variant: variant === 'ghost' ? 'quiet' : variant === 'danger' ? 'primary' : variant, size }),
+        variant === 'danger' && 'bg-red text-white hover:brightness-95',
+        pending && 'opacity-60 cursor-progress',
+        !children && 'size-9 !p-0 rounded-control',
+        className,
+      )}
       // 进行中不设 disabled：按钮被禁用时浏览器会把焦点移走，键盘用户就回不到原来的位置了。
       // 取消点击的默认行为，提交按钮也不会再提交一次表单（包括在输入框里按回车）
       aria-disabled={pending || undefined}
@@ -42,7 +48,7 @@ export function Button({
       onClick={pending ? (e) => e.preventDefault() : onClick}
       {...rest}
     >
-      {pending ? <LoaderCircle className={s.spin} /> : Icon ? <Icon /> : null}
+      {pending ? <LoaderCircle className="size-4 animate-spin" /> : Icon ? <Icon className="size-4" /> : null}
       {children}
     </button>
   )
@@ -57,8 +63,16 @@ export function ButtonLink({
   ...rest
 }: Common & Omit<LinkProps, 'children'>) {
   return (
-    <Link className={cx(s.btn, s[variant], s[size], !children && s.iconOnly, className)} {...rest}>
-      {Icon ? <Icon /> : null}
+    <Link
+      className={cx(
+        buttonVariants({ variant: variant === 'ghost' ? 'quiet' : variant === 'danger' ? 'primary' : variant, size }),
+        variant === 'danger' && 'bg-red text-white hover:brightness-95',
+        !children && 'size-9 !p-0 rounded-control',
+        className,
+      )}
+      {...rest}
+    >
+      {Icon ? <Icon className="size-4" /> : null}
       {children}
     </Link>
   )

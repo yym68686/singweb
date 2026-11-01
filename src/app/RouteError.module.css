@@ -1,6 +1,8 @@
 .standalone {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   min-height: 100dvh;
   padding: var(--sp-5);
 }
@@ -25,11 +27,10 @@
 .detail {
   max-height: 240px;
   margin: 0;
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-3) 0;
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel-2);
+  border-block: 1px solid var(--line);
+  background: transparent;
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   white-space: pre-wrap;

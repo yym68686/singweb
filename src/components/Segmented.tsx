@@ -23,7 +23,7 @@ export function Segmented<T extends string>({ legend, value, options, onChange, 
   return (
     <fieldset className={cx(s.group, className)}>
       <legend className={s.legend}>{legend}</legend>
-      <div className={s.segs} style={{ gridTemplateColumns: `repeat(${options.length}, minmax(max-content, 1fr))` }}>
+      <div className={s.segs}>
         {options.map((o) => (
           <label key={o.value} className={s.seg}>
             <input

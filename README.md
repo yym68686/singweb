@@ -44,7 +44,7 @@ Agent 的具体做法：
 | 探测目标 | `/targets` | 分组规则用到的 SSH 服务、网址和 TCP 端口，以及怎样算通过 |
 | 节点 | `/nodes` | sing-box 里的代理出站，停用后不参与任何分组 |
 
-界面是中文的，有浅色和深色两种外观，最窄适配 320 px 宽的屏幕。
+界面是中文的，有浅色和深色两种外观，最窄适配 320 px 宽的屏幕。设计基础复用 [Beautiful UI](https://www.beautifului.dev/)，具体来源与 MIT 许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。页面采用单列、无卡片的渐进式披露，详情与高级配置按需展开；前端约定见 [AGENTS.md](AGENTS.md)。
 
 ## 开发
 
@@ -56,6 +56,7 @@ npm run dev         # 开发服务器，http://localhost:5173
 npm run typecheck   # 类型检查
 npm run build       # 类型检查，然后构建到 dist/
 npm run preview     # 在本地预览构建结果
+npm run test:ui     # Playwright 浏览器回归（首次运行前 npx playwright install chromium）
 ```
 
 `dist/` 里是静态文件，可以放在任何静态服务器上，也可以由管理服务直接提供。页面使用浏览器路由，服务器要把找不到的路径都回退到 `index.html`。

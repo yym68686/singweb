@@ -17,16 +17,16 @@
 .list {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .row {
-  display: grid;
-  grid-template-columns: 76px 20px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-3);
-  padding: 10px var(--sp-4);
+  padding: 14px 4px;
   border-left: 3px solid transparent;
 }
 
@@ -51,9 +51,9 @@
 }
 
 .icon {
-  display: grid;
-  place-items: center;
-  height: 22px;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
 }
 
 .body {
@@ -129,27 +129,21 @@
 /* 紧凑模式用在总览的侧栏里 */
 
 .compact .row {
-  grid-template-columns: 20px minmax(0, 1fr);
+  flex-direction: column;
   padding: 10px var(--sp-3);
 }
 
 .compact .time {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
   padding: 0;
   font-size: var(--fs-12);
 }
 
 .compact .icon {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  align-self: start;
+  align-self: flex-start;
 }
 
 .compact .body {
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  align-self: stretch;
 }
 
 .compact .head {
@@ -162,25 +156,11 @@
 
 @media (max-width: 640px) {
   .row {
-    grid-template-columns: 20px minmax(0, 1fr);
+    flex-direction: column;
     padding: 10px var(--sp-3);
   }
 
-  .time {
-    grid-column: 2;
-    grid-row: 1;
-    padding: 0;
-    font-size: var(--fs-12);
-  }
-
-  .icon {
-    grid-column: 1;
-    grid-row: 1 / span 2;
-    align-self: start;
-    margin-top: 20px;
-  }
-
-  .body {
-    grid-column: 2;
-  }
+  .time { padding: 0; font-size: var(--fs-12); }
+  .icon { align-self: flex-start; }
+  .body { align-self: stretch; }
 }

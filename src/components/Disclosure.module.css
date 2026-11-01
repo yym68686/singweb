@@ -1,0 +1,11 @@
+.disclosure { min-width: 0; border-top: 1px solid var(--line-strong); }
+.summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 68px; padding: 16px 4px; cursor: pointer; list-style: none; }
+.summary::-webkit-details-marker { display: none; }
+.summary:hover { color: var(--accent-ink); }
+.chevron { width: 16px; height: 16px; color: var(--ink-2); transition: transform var(--dur) var(--ease-out); }
+.disclosure[open] > .summary > .chevron { transform: rotate(90deg); }
+.label { flex: 1 1 140px; min-width: 0; font-weight: 550; overflow-wrap: anywhere; }
+.meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ink-2); font-size: 12px; }
+.content { min-width: 0; padding: 0 4px 28px; }
+.content > * + * { margin-top: 16px; }
+@media (max-width: 480px) { .meta { flex-basis: 100%; margin-left: 28px; } }

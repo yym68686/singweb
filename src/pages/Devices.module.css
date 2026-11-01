@@ -1,15 +1,15 @@
-.outlets {
-  display: grid;
-  grid-template-columns: max-content max-content max-content;
-  gap: 6px 12px;
-  align-items: center;
-}
+.devices { display: flex; flex-direction: column; }
+.deviceDetails { display: flex; flex-direction: column; gap: 8px; padding: 0 4px 12px; }
+.detailHeading { margin-top: 8px; font-size: 13px; font-weight: 600; }
+.outlets { display: flex; flex-direction: column; gap: 6px; }
 
 .outlet {
-  display: grid;
-  grid-template-columns: subgrid;
-  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 4px 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
 }
 
 .group {
@@ -60,7 +60,8 @@
 
 /* 接入对话框 */
 .enroll {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-4);
   min-width: 0;
 }
@@ -93,10 +94,10 @@
 }
 
 .enrollState:not(:empty) {
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel-2);
+  padding: 10px 0;
+  border-block: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .enrollState > svg {
@@ -116,7 +117,8 @@
 }
 
 .enrollText {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 2px;
   min-width: 0;
   overflow-wrap: anywhere;

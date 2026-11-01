@@ -18,7 +18,7 @@ import { useDeleteTarget, useProbeCells, useSaveTarget } from '../api/hooks'
 import type { ProbeCell, Target, TargetKind } from '../api/types'
 import { ToneIcon } from '../components/Badge'
 import { Button } from '../components/Button'
-import { TableScroll } from '../components/DataTable'
+import { Disclosure, revealElement } from '../components/Disclosure'
 import { ConfirmDialog, Dialog } from '../components/Dialog'
 import { Menu } from '../components/Menu'
 import { Notice } from '../components/Notice'
@@ -65,6 +65,7 @@ export default function Targets() {
     if (!d || deleting || catalog.data?.target.has(d.id)) return
     deleted.current = null
     const next = d.next ? document.querySelector<HTMLElement>(`[data-edit="${CSS.escape(d.next)}"]`) : null
+    revealElement(next)
     ;(next ?? document.getElementById('main'))?.focus()
   }, [deleting, catalog.data])
 
@@ -133,80 +134,34 @@ interface TableProps {
 
 function TargetTable({ c, cells, onEdit, onDelete }: TableProps) {
   return (
-    <TableScroll label="探测目标" minWidth={1040}>
-      <table className={t.table}>
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>类型</th>
-            <th>地址</th>
-            <th>通过条件</th>
-            <th className={t.num}>超时</th>
-            <th>在用的分组</th>
-            <th>最近一轮</th>
-            <th className={t.actions}>
-              <span className="visually-hidden">操作</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {c.targets.map((tg) => {
-            const users = usersOf(c, tg.id)
-            const KindIcon = targetKindIcon[tg.kind]
-            return (
-              <tr key={tg.id}>
-                <td>
-                  <div className={t.name}>{tg.name}</div>
-                  {tg.note && <div className={t.sub}>{tg.note}</div>}
-                </td>
-                <td>
-                  <span className={s.kind}>
-                    <KindIcon aria-hidden />
-                    {targetKindLabel[tg.kind]}
-                  </span>
-                </td>
-                <td className={cx('mono', s.addr)}>{targetAddress(tg)}</td>
-                <td>
-                  <PassCondition tg={tg} />
-                </td>
-                <td className={t.num}>{timeoutText(tg.timeoutMs)}</td>
-                <td>
-                  {users.length ? (
-                    <ul className={t.inline}>
-                      {users.map((g) => (
-                        <li key={g.id}>
-                          <Link to={`/groups/${g.id}`}>{g.name}</Link>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className={t.sub}>没有分组使用</span>
-                  )}
-                </td>
-                <td>
-                  <Recent tg={tg} c={c} cells={cells} />
-                </td>
-                <td className={t.actions}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    icon={Pencil}
-                    aria-label={`编辑 ${tg.name}`}
-                    data-edit={tg.id}
-                    onClick={() => onEdit(tg)}
-                  >
-                    编辑
-                  </Button>
-                  <Button size="sm" variant="ghost" icon={Trash} aria-label={`删除 ${tg.name}`} onClick={() => onDelete(tg)}>
-                    删除
-                  </Button>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </TableScroll>
+    <ul className={s.targets} aria-label="探测目标列表">
+      {c.targets.map((tg) => {
+        const users = usersOf(c, tg.id)
+        const KindIcon = targetKindIcon[tg.kind]
+        return (
+          <li key={tg.id}>
+            <Disclosure title={tg.name} headingLevel={2} meta={<span className={s.kind}><KindIcon aria-hidden />{targetKindLabel[tg.kind]}</span>}>
+              <div className={s.targetDetail}>
+                <p className={cx('mono', s.addr)}>{targetAddress(tg)}</p>
+                {tg.note && <p className={t.sub}>{tg.note}</p>}
+                <p className={s.targetLabel}>通过条件</p>
+                <PassCondition tg={tg} />
+                <p className={s.targetLine}><span className={s.targetLabel}>超时</span>{timeoutText(tg.timeoutMs)}</p>
+                <div>
+                  <p className={s.targetLabel}>正在使用</p>
+                  {users.length ? <ul>{users.map((g) => <li key={g.id}><Link to={`/groups/${g.id}`}>{g.name}</Link></li>)}</ul> : <span className={t.sub}>没有分组使用</span>}
+                </div>
+                <div><p className={s.targetLabel}>最近一轮</p><Recent tg={tg} c={c} cells={cells} /></div>
+                <div className={s.targetLine}>
+                  <Button size="sm" variant="ghost" icon={Pencil} aria-label={`编辑 ${tg.name}`} data-edit={tg.id} onClick={() => onEdit(tg)}>编辑</Button>
+                  <Button size="sm" variant="ghost" icon={Trash} aria-label={`删除 ${tg.name}`} onClick={() => onDelete(tg)}>删除</Button>
+                </div>
+              </div>
+            </Disclosure>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

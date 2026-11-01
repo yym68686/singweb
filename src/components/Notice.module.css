@@ -4,10 +4,10 @@
   align-items: flex-start;
   gap: var(--sp-2) var(--sp-3);
   padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-left-width: 3px;
-  border-radius: var(--r-panel);
-  background: var(--panel);
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
 }
 
 .icon {
@@ -53,18 +53,14 @@
 }
 
 .warn {
-  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
   border-left-color: var(--warn);
-  background: var(--warn-soft);
 }
 .warn .icon {
   color: var(--warn);
 }
 
 .crit {
-  border-color: color-mix(in srgb, var(--crit) 40%, var(--line));
   border-left-color: var(--crit);
-  background: var(--crit-soft);
 }
 .crit .icon {
   color: var(--crit);
@@ -72,7 +68,6 @@
 
 .offline {
   border-left-color: var(--offline);
-  background: var(--offline-soft);
 }
 .offline .icon {
   color: var(--offline);

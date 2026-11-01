@@ -12,26 +12,19 @@
   gap: var(--sp-3);
 }
 
-/* 主栏 + 右侧栏；窄屏时右侧栏落到下面 */
+/* 单列纵向阅读流 */
 .split {
-  display: grid;
-  /* 写明 minmax(0, 1fr)：默认的列宽会被里面的宽表格撑开，窄屏上整页横向滚动 */
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-6);
-  align-items: start;
-}
-
-@media (min-width: 1180px) {
-  .split {
-    grid-template-columns: minmax(0, 1fr) 360px;
-  }
+  align-items: stretch;
 }
 
 .panel {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .panelHead {
@@ -40,8 +33,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2) var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--line);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .panelTitle {
@@ -55,14 +48,14 @@
 }
 
 .panelBody {
-  padding: var(--sp-4);
+  padding: var(--sp-3) 0;
 }
 
 /* 键值对 */
 .meta {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 6px var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   font-size: var(--fs-13);
 }
 
@@ -73,13 +66,14 @@
 .meta dd {
   min-width: 0;
   overflow-wrap: anywhere;
+  margin-bottom: 8px;
 }
 
 /* 列表上方的筛选和操作 */
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--sp-3);
   margin-bottom: var(--sp-4);
 }

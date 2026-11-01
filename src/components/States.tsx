@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { CircleAlert, LoaderCircle, RotateCcw, type LucideIcon } from 'lucide-react'
+import { CircleAlert, RotateCcw, type LucideIcon } from 'lucide-react'
+import BeautifulLoadingState from '../vendor/beautiful-ui/LoadingState'
 import { errorMessage } from '../api/errors'
 import { keepNames } from '../lib/keepNames'
 import { Button } from './Button'
@@ -7,9 +8,8 @@ import s from './States.module.css'
 
 export function LoadingState({ label = '正在加载' }: { label?: string }) {
   return (
-    <div className={s.loading} role="status">
-      <LoaderCircle className={s.spin} aria-hidden />
-      {label}
+    <div className={s.loading}>
+      <BeautifulLoadingState label={label} />
     </div>
   )
 }
@@ -59,7 +59,7 @@ interface LoadableProps<T> {
 
 /** 数据还没到时显示加载中，出错时显示原因，否则渲染内容 */
 export function Loadable<T>({ data, error, retry, children }: LoadableProps<T>) {
-  if (data !== undefined) return <>{children(data)}</>
+  if (data !== undefined) return <>{error && <ErrorState title="刷新失败，下面保留上次的数据" error={error} onRetry={retry} />}{children(data)}</>
   if (error) return <ErrorState error={error} onRetry={retry} />
   return <LoadingState />
 }
