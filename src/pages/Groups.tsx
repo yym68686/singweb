@@ -28,7 +28,7 @@ export default function Groups() {
     <>
       <PageHeader
         title="分组"
-        description="每个分组对应设备上 sing-box 的一个 selector，接管一部分流量，在候选节点之间切换。可以按分组规则自动切换，也可以手动选择节点。"
+        metadata={catalog.data && `${catalog.data.groups.length} 个分组`}
         actions={
           <ButtonLink to="/groups/new" variant="primary" icon={Plus}>
             新建分组
@@ -59,9 +59,7 @@ export default function Groups() {
                   新建分组
                 </ButtonLink>
               }
-            >
-              分组决定哪些流量交给 singweb 管理、在哪些节点之间切换，以及怎样选节点：按分组规则自动切换，或者手动选择。
-            </EmptyState>
+            />
           )
         }
       </Loadable>
@@ -81,7 +79,7 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
   return (
     <Disclosure
       title={g.name}
-      meta={<><span>{auto ? strategyLabel[g.strategy] : '手动选择'}</span><span>selector <span className="mono">{keepNames(g.selectorTag)}</span></span></>}
+      meta={<><span>{auto ? strategyLabel[g.strategy] : '手动选择'}</span><span>{tags.length} 节点 · {groupDeviceIds(g, c.devices).length} 设备</span></>}
       labelledBy={titleId}
       headingLevel={2}
       labelClassName={s.title}
@@ -103,6 +101,8 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
 
       <div className={s.body}>
         <dl className={cx(page.meta, s.rules)}>
+          <dt>selector</dt>
+          <dd className="mono">{keepNames(g.selectorTag)}</dd>
           <dt>接管的流量</dt>
           <dd>{keepNames(matchText(g.match))}</dd>
           <dt>候选节点</dt>

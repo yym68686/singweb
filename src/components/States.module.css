@@ -76,9 +76,9 @@
 
 .empty {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--sp-1);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
   padding: var(--sp-3) 2px;
   border-block: 1px solid var(--line);
 }
@@ -95,6 +95,7 @@
 }
 
 .emptyBody {
+  flex-basis: 100%;
   max-width: 60ch;
   color: var(--ink-2);
   font-size: var(--fs-13);

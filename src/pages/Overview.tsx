@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { CircleCheck, ClockFading, Laptop, OctagonAlert, TriangleAlert, WifiOff } from 'lucide-react'
-import { groupsOf, useCatalog, type Catalog } from '../api/catalog'
+import { groupsOf, outletName, useCatalog, type Catalog } from '../api/catalog'
 import { useEvents, useNow, useRuntimes } from '../api/hooks'
 import type { Device, GroupRuntime } from '../api/types'
 import { Badge, RuntimeBadge, ToneIcon } from '../components/Badge'
@@ -140,32 +140,40 @@ function Hero({ c, rts, now }: Props) {
 
 /** 除了“正常”和“手动选择”以外的出口，按严重程度排列 */
 function Attention({ c, rts, now }: Props) {
-  const seenOffline = new Set<string>()
+  const devices = c.devices.filter((d) => !d.online || d.singboxError)
   const items = rts
-    .filter((r) => r.state !== 'ok' && r.state !== 'manual')
+    .filter((r) => !['ok', 'manual', 'pinned', 'stale'].includes(r.state) && c.device.get(r.deviceId)?.online)
     .sort(byRank)
-    .filter((r) => {
-      if (r.state !== 'stale') return true
-      if (seenOffline.has(r.deviceId)) return false
-      seenOffline.add(r.deviceId)
-      return true
-    })
-  if (!items.length) return null
+  const count = devices.length + items.length
+  if (!count) return null
   return (
-    <Section title="需要注意" id="attention" collapsible defaultOpen summary={<span className={s.attentionCount}>{items.length} 项</span>} className={s.attention}>
+    <Section title={<>需要注意 <span className={s.attentionCount}>{count}</span></>} id="attention" className={s.attention}>
       <ul className={cx(page.panel, s.attnList)}>
+        {devices.map((d) => (
+          <li key={d.id} className={cx(s.attnItem, d.online ? s.crit : undefined)}>
+            <ToneIcon tone={d.online ? 'crit' : 'offline'} icon={d.online ? OctagonAlert : WifiOff} size={18} />
+            <div className={s.attnBody}>
+              <div className={s.attnLine}>
+                <Link to={`/devices/${d.id}`}>{keepNames(d.name)}</Link>
+                <span className={s.attnTitle}>{d.online ? 'sing-box 故障' : '设备离线'}</span>
+                {!d.online && <time className={s.attnText} dateTime={d.lastSeenAt}>{timeAgo(d.lastSeenAt, now)}</time>}
+              </div>
+              {d.online && <p className={s.attnText}>{d.singboxError}</p>}
+            </div>
+          </li>
+        ))}
         {items.map((r) => {
           const look = runtimeLook[r.state]
           return (
             <li key={`${r.deviceId}/${r.groupId}`} className={cx(s.attnItem, s[look.tone])}>
               <ToneIcon tone={look.tone} icon={look.icon} size={18} />
               <div className={s.attnBody}>
-                <p className={s.attnTitle}>{runtimeLabel[r.state]}</p>
-                <p className={s.attnWhere}>
+                <div className={s.attnLine}>
                   <Link to={`/devices/${r.deviceId}`}>{keepNames(c.device.get(r.deviceId)?.name ?? r.deviceId)}</Link>
-                  {r.state === 'stale' ? ' · 设备级' : ` · ${c.group.get(r.groupId)?.name ?? r.groupId}`}
-                </p>
-                {r.state !== 'stale' && <p className={s.attnText}>{keepNames(runtimeNote(r, c, now))}</p>}
+                  <span>{c.group.get(r.groupId)?.name ?? r.groupId}</span>
+                  <span className={s.attnTitle}>{runtimeLabel[r.state]}</span>
+                </div>
+                <p className={s.attnText}>{keepNames(runtimeNote(r, c, now))}</p>
               </div>
             </li>
           )
@@ -181,8 +189,6 @@ function Outlets({ c, rts, now }: Props) {
   return (
     <Section
       title="当前出口"
-      collapsible
-      defaultOpen
       className={s.outlets}
     >
       {devices.length ? (
@@ -192,9 +198,7 @@ function Outlets({ c, rts, now }: Props) {
           ))}
         </div>
       ) : (
-        <EmptyState icon={Laptop} title="还没有设备">
-          在设备上安装并启动 singweb Agent，它会自动出现在这里。
-        </EmptyState>
+        <EmptyState icon={Laptop} title="暂无设备" />
       )}
     </Section>
   )
@@ -213,9 +217,9 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
     <Disclosure title={d.name} meta={<>{d.online && d.singboxError ? 'sing-box 故障' : d.online ? '在线' : `离线 · ${timeAgo(d.lastSeenAt, now)}`}<span>{groups.length} 个分组</span></>} headingLevel={3}>
       <header className={page.panelHead}>
         <div className={page.panelTitle}>
-          <Link to={`/devices/${d.id}`}>{d.name}</Link>
           <span className={cx('mono', page.sub)}>{d.hostname}</span>
         </div>
+        <Link to={`/devices/${d.id}`}>设备详情</Link>
         {d.online ? (
           lastRound && (
             <span className={page.sub}>
@@ -232,10 +236,9 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
         <ul className={s.routes}>
           {groups.map((g) => {
             const rt = mine.find((r) => r.groupId === g.id)
-            const switchSummary = rt?.lastSwitch && <span className={s.lastSwitch}><time dateTime={rt.lastSwitch.at} title={formatFull(rt.lastSwitch.at)}>{timeAgo(rt.lastSwitch.at, now)}</time> {keepNames(hopText(rt.lastSwitch.from, rt.lastSwitch.to, c))}</span>
             return (
               <li key={g.id}>
-                <Disclosure title={g.name} headingLevel={4} className={s.route} meta={<>{rt ? <RuntimeBadge state={rt.state} /> : '等待 Agent 上报'}{switchSummary}</>}>
+                <Disclosure title={g.name} headingLevel={4} className={s.route} meta={<>{rt && <span className={s.outletName}>{keepNames(outletName(rt.activeNodeId, c))}</span>}{rt ? <RuntimeBadge state={rt.state} /> : '待上报'}</>}>
                   {rt ? (
                   <RouteStrip
                     runtime={rt}
@@ -251,7 +254,7 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
           })}
         </ul>
       ) : (
-          <p className={cx(page.panelBody, page.sub)}>
+        <p className={cx(page.panelBody, page.sub)}>
           未应用分组 · <Link to="/groups">去分组设置</Link>
         </p>
       )}
@@ -260,10 +263,10 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
 }
 
 function RecentEvents({ c, now }: { c: Catalog; now: number }) {
-  const events = useEvents({ limit: 8 })
+  const events = useEvents({ limit: 5 })
   const items = events.data?.pages[0]?.items
   return (
-    <Section title="最近事件" collapsible className={s.events} actions={<Link to="/events">查看全部事件</Link>}>
+    <Section title="最近事件" className={s.events} actions={<Link to="/events">全部事件</Link>}>
       {items ? (
         items.length ? (
           <EventList events={items} catalog={c} now={now} compact />

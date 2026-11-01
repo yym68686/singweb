@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { cx } from '../lib/cx'
+import { SegmentedControl } from '../vendor/beautiful-ui/SegmentedControl'
 import s from './Segmented.module.css'
 
 interface Option<T extends string> {
@@ -23,22 +24,7 @@ export function Segmented<T extends string>({ legend, value, options, onChange, 
   return (
     <fieldset className={cx(s.group, className)}>
       <legend className={s.legend}>{legend}</legend>
-      <div className={s.segs}>
-        {options.map((o) => (
-          <label key={o.value} className={s.seg}>
-            <input
-              type="radio"
-              className={s.radio}
-              name={name}
-              value={o.value}
-              checked={value === o.value}
-              onChange={() => onChange(o.value)}
-            />
-            {o.icon && <o.icon aria-hidden />}
-            {o.label}
-          </label>
-        ))}
-      </div>
+      <SegmentedControl name={name} value={value} onChange={onChange} options={options.map((o) => ({ value: o.value, label: <>{o.icon && <o.icon size={15} aria-hidden />}{o.label}</> }))} />
     </fieldset>
   )
 }

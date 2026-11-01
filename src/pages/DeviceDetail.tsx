@@ -92,7 +92,7 @@ function DeviceBody({ d, c, rts, now }: BodyProps) {
       <PageHeader
         back={{ to: '/devices', label: '设备' }}
         title={d.name}
-        description={
+        metadata={
           <>
             <span className="mono">{d.hostname}</span>，{osText(d)}
           </>
@@ -121,14 +121,12 @@ function DeviceBody({ d, c, rts, now }: BodyProps) {
           <div className={page.stackSm}>
             {!d.online && (
               <Notice tone="offline" title={`设备${gapBefore(offlineAgo)}${offlineAgo}离线`}>
-                管理服务收不到这台设备的上报，下面是它最后上报的状态。设备重新连上之前，不能从这里探测、固定或选择节点。Agent
-                如果还在运行，会继续在本地探测和切换，重新连上后再同步。
+                显示最后上报的状态；暂不能探测或切换节点。
               </Notice>
             )}
             {singboxDown && (
               <Notice tone="crit" title="本机的 sing-box 没有起来">
-                Agent 在线，但它管的 <span className="nowrap">sing-box</span> 启动失败：{d.singboxError}
-                。起来之前，这台设备上的分组切换都不会生效；Agent 会隔一会儿自动重试。
+                {d.singboxError}。节点切换暂不生效，Agent 会自动重试。
               </Notice>
             )}
             {oldSingbox && (
@@ -569,7 +567,6 @@ function Snippet({ d }: { d: Device }) {
     <Section
       id="snippet"
       title="sing-box 配置"
-      description="Agent 在本机生成这份配置，节点出站和安全密钥都由它管；这里看到的是内容预览。"
     >
       <div className={page.stackSm}>
         {built && built.warnings.length > 0 && (

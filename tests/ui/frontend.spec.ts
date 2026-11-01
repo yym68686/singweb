@@ -190,9 +190,10 @@ test('live outlet details disclose one level at a time on overview and device ro
   await page.locator('summary').filter({ hasText: '默认分组' }).click()
   await expect(page.getByText('当前出口：东京节点')).toBeVisible()
   await page.getByText('候选节点与探测详情').click()
-  await expect(page.locator('summary').filter({ hasText: '东京节点' })).toBeVisible()
-  await expect(page.locator('summary').filter({ hasText: '东京节点' })).toContainText('可用 · 38 ms')
-  await page.locator('summary').filter({ hasText: '东京节点' }).click()
+  const nodeSummary = page.locator('summary').filter({ hasText: '可用 · 38 ms' })
+  await expect(nodeSummary).toBeVisible()
+  await expect(nodeSummary).toContainText('东京节点')
+  await nodeSummary.click()
   await expect(page.getByText('可用，延迟中位数 38 ms')).toBeVisible()
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }))
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport)
@@ -209,6 +210,54 @@ test('API failures stay visible with a working retry state', async ({ page }) =>
   await expect(page.getByRole('alert')).toContainText('没能加载数据')
   await expect(page.getByRole('alert')).toContainText('模拟服务不可用')
   await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+})
+
+test('overview groups offline issues by device and reports devices without runtimes', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.route('**/api/v1/devices', (route) => route.fulfill({ json: { items: [
+    { ...device, online: false },
+    { ...device, id: 'new-device', name: '未上报设备', online: false },
+  ] } }))
+  await page.route('**/api/v1/runtime*', (route) => route.fulfill({ json: { items: [
+    { ...runtime, state: 'stale' }, { ...runtime, groupId: 'group-2', state: 'stale' },
+  ] } }))
+  await page.goto('/')
+  const attention = page.locator('#attention')
+  await expect(attention.getByRole('listitem')).toHaveCount(2)
+  await expect(attention.getByText('设备离线', { exact: true })).toHaveCount(2)
+  await expect(attention.getByRole('link', { name: '未上报设备' })).toBeVisible()
+})
+
+test('overview keeps sing-box failures visible before any runtime is reported', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.route('**/api/v1/devices', (route) => route.fulfill({ json: { items: [{ ...device, singboxError: '监听端口被占用' }] } }))
+  await page.route('**/api/v1/runtime*', (route) => route.fulfill({ json: { items: [] } }))
+  await page.goto('/')
+  await expect(page.locator('#attention').getByText('监听端口被占用')).toBeVisible()
+})
+
+test('node search filters records and restores them when cleared', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.goto('/nodes')
+  await page.locator('summary').filter({ hasText: '筛选节点' }).click()
+  const search = page.getByRole('searchbox', { name: '搜索名称、地区或地址' })
+  const list = page.getByRole('list', { name: '代理节点列表' })
+  await search.fill('PROXY.EXAMPLE.COM')
+  await expect(list.getByRole('listitem')).toHaveCount(1)
+  await search.fill('无匹配结果')
+  await expect(list.getByRole('listitem')).toHaveCount(0)
+  await expect(page.getByText('无匹配节点')).toBeVisible()
+  await page.getByRole('button', { name: '清除搜索' }).click()
+  await expect(list.getByRole('listitem')).toHaveCount(1)
+})
+
+test('device details retain metadata and fit outlet controls in the first viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await installApiMocks(page, { populated: true })
+  await page.goto('/devices/device-1')
+  await expect(page.locator('main > header').getByText('test-host')).toBeVisible()
+  await page.locator('#group-group-1 > summary').click()
+  await expect(page.getByText('当前出口：东京节点')).toBeInViewport()
 })
 
 test('login remains usable without a session and reports rejected credentials', async ({ page }) => {
@@ -248,7 +297,7 @@ for (const width of [320, 1280]) {
           expect(colors.text).not.toBe(colors.background)
         }
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { message: path }).toBeLessThanOrEqual(0)
-        if (path === '/' || path === '/groups/group-1') await page.screenshot({ path: testInfo.outputPath(`${path === '/' ? 'overview' : 'editor'}.png`), fullPage: true })
+        await page.screenshot({ path: testInfo.outputPath(`${path === '/' ? 'overview' : path === '/groups/group-1' ? 'editor' : path.slice(1).replaceAll('/', '-')}.png`), fullPage: true })
       }
       expect(errors).toEqual([])
     })

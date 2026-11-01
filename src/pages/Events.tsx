@@ -42,7 +42,6 @@ export default function Events() {
     <>
       <PageHeader
         title="事件记录"
-        description="节点切换、故障和恢复、手动固定、设备上下线和配置变更都记在这里。切换事件会写明从哪个节点切到哪个节点，以及为什么切。"
       />
       <Loadable data={catalog.data} error={catalog.error} retry={catalog.retry}>
         {(c) => <EventsBody c={c} />}
@@ -158,13 +157,9 @@ function EventsBody({ c }: { c: Catalog }) {
                 清除筛选
               </Button>
             }
-          >
-            换个设备、分组、类型或级别试试。
-          </EmptyState>
+          />
         ) : (
-          <EmptyState icon={History} title="还没有事件">
-            Agent 连上控制端之后，节点切换、故障和恢复都会记在这里。
-          </EmptyState>
+          <EmptyState icon={History} title="暂无事件" />
         )
       ) : (
         <div
@@ -180,9 +175,7 @@ function EventsBody({ c }: { c: Catalog }) {
               <Button onClick={() => void events.fetchNextPage()} pending={events.isFetchingNextPage}>
                 加载更早的事件
               </Button>
-            ) : (
-              <p className={page.sub}>没有更早的事件了。</p>
-            )}
+            ) : null}
             {events.isFetchNextPageError && (
               <p className={s.moreError} role="alert">
                 没能加载更早的事件：{errorMessage(events.error)}

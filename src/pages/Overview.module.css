@@ -80,7 +80,7 @@
 .grid {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-5);
   align-items: stretch;
 }
 
@@ -111,7 +111,7 @@
 }
 
 .route { border-top: 0; }
-.route > summary > :last-child { display: flex; flex-direction: column; align-items: flex-start; }
+.outletName { max-width: 44ch; overflow-wrap: anywhere; }
 
 .lastSwitch {
   color: var(--ink-2);
@@ -160,6 +160,8 @@
   gap: 2px;
   min-width: 0;
 }
+
+.attnLine { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; }
 
 .attnTitle {
   font-weight: 600;

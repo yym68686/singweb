@@ -52,7 +52,7 @@ export default function Devices() {
     <>
       <PageHeader
         title="设备"
-        description="接入了 singweb 的电脑。每台设备上的 Agent 管着本机的 sing-box：从这里拿节点和分组，按分组规则探测、切换节点，并实时上报状态。"
+        metadata={catalog.data && `${catalog.data.devices.filter((d) => d.online).length} 在线 · ${catalog.data.devices.filter((d) => !d.online).length} 离线`}
         actions={add}
       />
       <Loadable
@@ -67,11 +67,7 @@ export default function Devices() {
           c.devices.length ? (
             <DeviceTable c={c} rts={rts} now={now} />
           ) : (
-            <EmptyState icon={Laptop} title="还没有设备" action={add}>
-              {admin
-                ? '在要接入的电脑上运行一条命令，装好 Agent 和 sing-box 之后，设备会自动出现在这里。'
-                : '管理员生成接入命令、在电脑上运行之后，设备会自动出现在这里。'}
-            </EmptyState>
+            <EmptyState icon={Laptop} title="暂无设备" action={add} />
           )
         }
       </Loadable>
@@ -140,7 +136,7 @@ function EnrollDialog({ e, c, now }: { e: Enrollment; c: Catalog | undefined; no
       onClose={e.close}
       wide
       title="接入新设备"
-      description="在要接入的电脑上运行下面这条命令。它会装好 singweb Agent，本机没有 Node.js 或 sing-box 时下载官方版本放进用户目录，并设成登录后自动运行，全程不需要管理员权限。"
+      description="在目标电脑运行命令，安装后自动接入。"
       footer={
         <>
           {(e.expired || joined || e.create.isError) && (
@@ -174,6 +170,7 @@ function EnrollDialog({ e, c, now }: { e: Enrollment; c: Catalog | undefined; no
               copyLabel="复制命令"
               code={installCommand(os, created.token)}
             />
+            <Disclosure title="安装选项与日志">
             <p className={s.hint}>
               {os === 'macos' ? (
                 <>
@@ -187,6 +184,7 @@ function EnrollDialog({ e, c, now }: { e: Enrollment; c: Catalog | undefined; no
                 </>
               )}
             </p>
+            </Disclosure>
           </>
         )}
         <EnrollState e={e} joined={joined} device={device} now={now} />

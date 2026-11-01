@@ -213,7 +213,7 @@ export function TargetFields({ draft, errors, onChange: update }: TargetFieldsPr
             <Field
               label="网址"
               error={errors.url}
-              hint="Agent 经过节点请求这个网址，不跟随重定向，也不带任何账号或凭据。"
+              hint="不跟随重定向。"
             >
               {(a) => (
                 <TextInput
@@ -248,7 +248,7 @@ export function TargetFields({ draft, errors, onChange: update }: TargetFieldsPr
               <Field
                 label="响应里要包含的文字（可选）"
                 error={errors.keyword}
-                hint="区分大小写，只在响应的前 64 KB 里找。留空表示不检查内容。"
+                hint="区分大小写，检查前 64 KB；可留空。"
               >
                 {(a) => (
                   <TextInput
@@ -307,7 +307,7 @@ export function TargetFields({ draft, errors, onChange: update }: TargetFieldsPr
 
       {draft.kind === 'ssh' && (
         <>
-          <Fieldset legend="探测到哪一步" hint="握手包含读取标识。两种都不会登录，也不需要账号或私钥。">
+          <Fieldset legend="探测阶段">
             <div className={s.levels}>
               {levels.map((lv) => (
                 <Check
@@ -331,7 +331,7 @@ export function TargetFields({ draft, errors, onChange: update }: TargetFieldsPr
                 <Field
                   label="主机密钥指纹（可选）"
                   error={errors.hostKey}
-                  hint="留空表示只完成握手、不核对指纹。填写后，指纹对不上就算失败：可能有人在中间拦截，也可能是服务器换了密钥。"
+                  hint="可留空；填写后指纹不匹配即失败。"
                 >
                   {(a) => (
                     <TextInput
@@ -356,7 +356,7 @@ export function TargetFields({ draft, errors, onChange: update }: TargetFieldsPr
       )}
 
       <div data-field="timeoutMs">
-        <Field label="超时" error={errors.timeoutMs} hint="500–30000 ms。超过这个时间还没完成，这一次探测就算失败。">
+        <Field label="超时" error={errors.timeoutMs} hint="500–30000 ms。">
           {(a) => (
             <UnitInput
               {...a}

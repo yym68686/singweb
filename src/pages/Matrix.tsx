@@ -8,7 +8,6 @@ import {
   Grid3x3,
   KeyRound,
   Laptop,
-  ShieldCheck,
   Target as TargetIcon,
   WifiOff,
   type LucideIcon,
@@ -20,7 +19,6 @@ import { Badge, ToneIcon } from '../components/Badge'
 import { ButtonLink } from '../components/Button'
 import { TableScroll } from '../components/DataTable'
 import { Field, Select } from '../components/Form'
-import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/PageHeader'
 import { ProbeStrip, stripSummary } from '../components/ProbeStrip'
 import { Segmented } from '../components/Segmented'
@@ -47,16 +45,13 @@ export default function Matrix() {
     <>
       <PageHeader
         title="连通性"
-        description="每台设备经由每个节点探测各个目标的结果，只包括按规则自动切换的分组。探测在设备本地进行，同一个节点在不同设备上的结果可能不一样。"
       />
       <Loadable data={catalog.data} error={catalog.error} retry={catalog.retry}>
         {(c) =>
           c.devices.length ? (
             <MatrixBody c={c} />
           ) : (
-            <EmptyState icon={Laptop} title="还没有设备">
-              设备上的 Agent 连上管理服务并开始探测后，结果会显示在这里。
-            </EmptyState>
+            <EmptyState icon={Laptop} title="暂无设备" />
           )
         }
       </Loadable>
@@ -144,10 +139,6 @@ function MatrixBody({ c }: { c: Catalog }) {
           </Field>
         )}
       </div>
-
-      <Notice icon={ShieldCheck} title="“通过”不代表能登录">
-        Agent 探测时只做到目标设定的那一步（比如完成 SSH 握手、收到 HTTP 响应或连上端口），不会发送任何账号、密钥或凭据。能不能登录还要看账号和服务器自己的访问限制。
-      </Notice>
 
       {cells.data ? (
         view === 'device' ? (

@@ -84,7 +84,7 @@ export default function Targets() {
     <>
       <PageHeader
         title="探测目标"
-        description="分组规则用这些目标判断节点能不能用：Agent 经过每个候选节点去连它们，比如完成 SSH 握手、请求一个网址、连上一个端口。探测不会登录，也不带任何账号或凭据。"
+        metadata={catalog.data && `${catalog.data.targets.length} 个目标`}
         actions={addMenu('end')}
       />
       <Loadable data={catalog.data} error={catalog.error} retry={catalog.retry}>
@@ -97,9 +97,7 @@ export default function Targets() {
               onDelete={setDeleting}
             />
           ) : (
-            <EmptyState icon={TargetIcon} title="还没有探测目标" action={addMenu('start')}>
-              添加你关心的服务，比如 github.com:22 或 https://api.openai.com。分组规则会用它们判断每个节点能不能用。
-            </EmptyState>
+            <EmptyState icon={TargetIcon} title="暂无探测目标" action={addMenu('start')} />
           )
         }
       </Loadable>

@@ -2,7 +2,7 @@
 .layout {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: var(--sp-4);
   align-items: stretch;
 }
 
@@ -11,13 +11,14 @@
 .body {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
-  padding: var(--sp-4) 0;
+  gap: var(--sp-3);
+  max-width: 760px;
+  padding: var(--sp-2) 0;
 }
 
 @media (min-width: 640px) {
   .body {
-    padding: var(--sp-5) 0;
+    padding: var(--sp-2) 0;
   }
 }
 
@@ -30,13 +31,13 @@
 .cards {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 0;
 }
 
 .stackCards {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 0;
   max-width: 640px;
 }
 
@@ -175,8 +176,8 @@
   bottom: var(--sp-3);
   z-index: 10;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--sp-2) var(--sp-3);
   padding: var(--sp-3) 0;
   border-top: 1px solid var(--line-strong);
@@ -184,15 +185,15 @@
 }
 
 .footerStatus {
-  flex: none;
+  flex: 1 1 200px;
   min-width: 0;
 }
 
 /* 两个按钮一起换行，不拆到两行 */
 .footerActions {
   display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
+  flex-wrap: wrap;
+  gap: var(--sp-2);
 }
 
 .footerError {
@@ -249,7 +250,7 @@
 .categories {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-3);
   margin-top: var(--sp-2);
 }
 

@@ -4,9 +4,9 @@ Source: https://www.beautifului.dev/ · https://github.com/slev12397/beautiful-u
 
 Pinned revision: `44a274e598395ab61e7c96c26fda2758780253b7`
 
-Vendored files: `src/vendor/beautiful-ui/foundation.css` (official registry foundation), `Button.tsx`.
+Vendored files: `src/vendor/beautiful-ui/foundation.css` (official registry foundation), `Button.tsx`, `SegmentedControl.tsx`, `SearchField.tsx` (extracted from `SearchList.tsx`).
 
-Adapters: use the existing data-theme attribute and class-name helper; preserve the local Button API through the upstream buttonVariants. Application layout, concise page copy and accessible native disclosure controls live outside the vendored styles. Demo motion, thinking indicators, card primitives and paid icons are not imported.
+Adapters: use the existing data-theme attribute and class-name helper; preserve the local Button API through the upstream buttonVariants. SegmentedControl accepts translated labels and uses native radios. SearchField extracts the working search input and clear action without demo results. Application layout, concise page copy and accessible native disclosure controls live outside the vendored styles. Demo motion, thinking indicators, card primitives and paid icons are not imported.
 
 The upstream loading-state demo is intentionally not included or used; application loading uses a compact content skeleton.
 

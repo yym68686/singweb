@@ -47,6 +47,7 @@ import { joinZh, timeAgo } from '../lib/format'
 import { keepNames } from '../lib/keepNames'
 import { allFailLabel, protocolLabel } from '../lib/labels'
 import type { Tone } from '../lib/status'
+import { SearchField } from '../vendor/beautiful-ui/SearchField'
 import t from '../components/DataTable.module.css'
 import page from '../styles/page.module.css'
 import s from './Nodes.module.css'
@@ -61,7 +62,7 @@ export default function Nodes() {
     <>
       <PageHeader
         title="节点"
-        description="singweb 把所有订阅里的节点拉下来、去重后汇总成一个节点池，分组从这里挑节点。设备拿到的是汇总之后的结果，不会看到上游的订阅地址。停用的节点不参与任何分组。"
+        metadata={catalog.data && `${catalog.data.nodes.length} 节点 · ${catalog.data.sources.length} 订阅`}
       />
       <Loadable
         data={data}
@@ -74,7 +75,6 @@ export default function Nodes() {
         {({ c, rts }) => (
           <div className={page.stack}>
             <SourcesCard c={c} onImport={() => setImporting(true)} />
-            {me.data?.role === 'admin' && <SubscriptionCard />}
             {c.nodes.length ? (
               <NodeTable c={c} rts={rts} />
             ) : (
@@ -92,6 +92,7 @@ export default function Nodes() {
                 {emptyPoolText(c.sources)}
               </EmptyState>
             )}
+            {me.data?.role === 'admin' && <SubscriptionCard />}
             {importing && <ImportDialog onClose={() => setImporting(false)} />}
           </div>
         )}
@@ -102,11 +103,11 @@ export default function Nodes() {
 
 /** 节点池为空时说清楚是哪一种空：没有订阅、订阅都停了、还是拉取失败 */
 function emptyPoolText(sources: NodeSource[]): string {
-  if (!sources.length) return '添加一个订阅地址，singweb 会马上拉取并把节点解析到这里。'
+  if (!sources.length) return '尚未导入订阅。'
   const enabled = sources.filter((src) => src.enabled)
-  if (!enabled.length) return '订阅都停用了，停用的订阅的节点不在节点池里。打开任意一个订阅就会马上拉取。'
-  if (enabled.every((src) => src.lastError)) return '订阅都拉取失败了，原因写在上面的订阅里。'
-  return '订阅里没有解析出能用的节点。'
+  if (!enabled.length) return '全部订阅已停用。'
+  if (enabled.every((src) => src.lastError)) return '订阅拉取失败。'
+  return '订阅中暂无可用节点。'
 }
 
 /** 健康列按结论把设备分几堆 */
@@ -243,7 +244,7 @@ function SourcesCard({ c, onImport }: { c: Catalog; onImport: () => void }) {
       </header>
       <div className={page.panelBody}>
         {sources.length === 0 ? (
-          <p className={page.sub}>还没有订阅。添加一个订阅地址，singweb 会马上拉取并解析出节点。</p>
+          <p className={page.sub}>暂无订阅</p>
         ) : (
           <ul className={s.sources}>
             {sources.map((src) => (
@@ -379,7 +380,7 @@ function EditDialog({ c, source, onClose }: { c: Catalog; source: NodeSource; on
         }
       >
         <div className={s.dialogForm}>
-          <Field label="名称" hint="只用于在网页上区分，不影响节点本身">
+          <Field label="名称">
             {(a) => (
               <TextInput
                 {...a}
@@ -487,7 +488,7 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       title="导入节点"
-      description="支持 base64 分享链接列表（vmess、vless、trojan、ss、hysteria2 等）、Clash 和 sing-box 格式的订阅地址。整条链接只存在 singweb 的数据库里，设备拿不到它。"
+      description="支持分享链接、Clash 和 sing-box 订阅。"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -500,7 +501,7 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className={s.dialogForm}>
-        <Field label="名称" hint="比如「主力订阅」">
+        <Field label="名称">
           {(a) => (
             <TextInput
               {...a}
@@ -512,7 +513,7 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
             />
           )}
         </Field>
-        <Field label="订阅地址" hint="整条链接，包含 token">
+        <Field label="订阅地址">
           {(a) => (
             <TextInput
               {...a}
@@ -550,17 +551,16 @@ function SubscriptionCard() {
   const url = sub.data ? absoluteApiUrl(`/subscribe/${sub.data}`) : ''
 
   return (
-    <section className={page.panel}>
+    <Disclosure title="客户端订阅链接" headingLevel={2}>
       <header className={page.panelHead}>
-        <h2 className={page.panelTitle}>singweb 订阅链接</h2>
+        <span className={page.sub}>sing-box 客户端</span>
         <Button variant="ghost" size="sm" icon={RotateCw} disabled={!sub.data} onClick={() => setConfirm(true)}>
           重置链接
         </Button>
       </header>
       <div className={cx(page.panelBody, s.subscription)}>
         <p className={page.sub}>
-          节点池按分组整理成的一整份 sing-box 配置。装了 Agent 的设备会自动同步，不需要它；手机上的 sing-box
-          这类只能导入链接的客户端，导入这一条就行。链接等同于密码，拿到它就能拿到全部节点。
+          链接包含全部节点，请勿公开。
         </p>
         {sub.data ? (
           <CopyField value={url} label="复制 singweb 订阅链接" />
@@ -591,7 +591,7 @@ function SubscriptionCard() {
           <p>旧链接马上失效，已经导入它的客户端要重新导入新链接。装了 Agent 的设备不受影响。</p>
         </ConfirmDialog>
       )}
-    </section>
+    </Disclosure>
   )
 }
 
@@ -599,6 +599,7 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
   const update = useUpdateNode()
   const toast = useToast()
   const [confirm, setConfirm] = useState<ProxyNode | null>(null)
+  const [query, setQuery] = useState('')
 
   const usage = usageOf(c)
 
@@ -622,14 +623,20 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
 
   const enabled = c.nodes.filter((n) => n.enabled).length
   const inUse = new Set(rts.map((r) => r.activeNodeId).filter((id) => id !== null)).size
+  const term = query.trim().toLocaleLowerCase()
+  const nodes = term ? c.nodes.filter((n) => [n.tag, n.region, n.protocol, n.server, n.source].some((v) => v.toLocaleLowerCase().includes(term))) : c.nodes
 
   return (
     <div className={page.stackSm}>
-      <p className={page.sub}>
-        共 {c.nodes.length} 个节点，{enabled} 个启用，{inUse} 个正在作为出口。
-      </p>
+      <header className={page.panelHead}>
+        <h2 className={page.panelTitle}>节点池</h2>
+        <span className={page.sub}>{enabled} 启用 · {inUse} 在用</span>
+      </header>
+      <Disclosure title="筛选节点" meta={term ? `${nodes.length} / ${c.nodes.length}` : undefined}>
+        <SearchField value={query} onChange={setQuery} label="搜索名称、地区或地址" />
+      </Disclosure>
       <ul className={s.nodes} aria-label="代理节点列表">
-        {c.nodes.map((n) => (
+        {nodes.map((n) => (
           <li key={n.id}>
             <Disclosure
               title={n.tag}
@@ -648,6 +655,7 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
           </li>
         ))}
       </ul>
+      {nodes.length === 0 && <EmptyState title="无匹配节点" />}
 
       {confirm && (
         <DisableDialog

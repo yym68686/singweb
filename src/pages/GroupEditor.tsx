@@ -475,11 +475,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
         back={{ to: '/groups', label: '分组' }}
         title={group ? group.name : '新建分组'}
         docTitle={group ? `编辑 ${group.name}` : '新建分组'}
-        description={
-          isNew
-            ? '选好要接管的流量、候选节点和选择方式。保存后，Agent 会在设备上创建对应的 selector；按规则自动切换的分组会开始探测。'
-            : '修改会同步给应用这个分组的所有设备，Agent 从下一轮开始按新设置执行。'
-        }
       />
 
       <div className={s.layout}>
@@ -505,7 +500,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                     <Field
                       label="selector tag"
                       error={errors.selectorTag}
-                      hint="设备上 sing-box 里这个 selector 出站的 tag，Agent 通过 Clash API 切换它。只能用字母、数字、- 和 _。"
+                      hint="仅限字母、数字、- 和 _。"
                     >
                       {(a) => (
                         <TextInput
@@ -535,8 +530,8 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                   {draft.allDevices ? (
                     <p className={s.summary}>
                       {c.devices.length
-                        ? `现在的 ${c.devices.length} 台设备和以后接入的设备都会用上这个分组。`
-                        : '现在还没有设备。设备接入后会自动用上这个分组。'}
+                        ? `${c.devices.length} 台设备，包含今后接入的设备`
+                        : '新接入的设备将自动应用'}
                     </p>
                   ) : c.devices.length ? (
                     <Fieldset legend="设备" hint="离线的设备会在重新连上后收到这个分组。" error={errors.deviceIds}>
@@ -580,13 +575,13 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               title="接管哪些流量"
               id="match"
               collapsible
-              description="符合条件的连接交给这个分组的 selector，其余流量不受影响。一项都不设，就是兜底分组：别的分组没接管的流量都走它。"
+              description="留空时接管未被其他分组匹配的流量。"
             >
               <div className={cx(page.panel, s.body)}>
                 <div data-field="match">
                   <Fieldset
                     legend="接管条件"
-                    hint="条件分三类。同一类里满足任意一项即可，设置了的几类要同时满足。"
+                    hint="同类任选其一，不同类同时满足。"
                     error={errors.match}
                   >
                     <div className={s.categories}>
@@ -596,7 +591,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                             <Field
                               label="域名"
                               error={errors.domains}
-                              hint="每行一个，包含子域名。SSH、数据库等协议的连接里没有域名，只有 sing-box 用 FakeIP 解析这些域名、或者程序经代理连接时，才能按域名接管。"
+                              hint="每行一个，含子域名；仅匹配可识别域名的连接。"
                             >
                               {(a) => (
                                 <TextArea
@@ -627,7 +622,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                           </div>
                         </div>
                         <div className={s.row2}>
-                          <Field label="域名关键字" hint="域名里包含这些文字就接管，多个用逗号分开。">
+                          <Field label="域名关键字" hint="多个用逗号分隔。">
                             {(a) => (
                               <TextInput
                                 {...a}
@@ -660,7 +655,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                       </Category>
 
                       <Category title="协议或端口">
-                        <Fieldset legend="协议" hint="sing-box 嗅探连接开头的数据来识别协议，不管端口是多少。">
+                        <Fieldset legend="协议">
                           <div className={s.checkGrid}>
                             {sniffProtocols.map((p) => (
                               <Check
@@ -716,7 +711,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               </div>
             </Section>
 
-            <Section title="候选节点" id="nodes" collapsible description="selector 只在这些节点之间切换。停用的节点会被跳过。">
+            <Section title="候选节点" id="nodes" collapsible>
               <div className={cx(page.panel, s.body)}>
                 <Segmented
                   legend="加入方式"
@@ -749,12 +744,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               title="分组规则"
               id="rules"
               collapsible
-              description={
-                <>
-                  按规则自动切换时，Agent 经过每个候选节点检查这些规则，只选用通过的节点。规则用到的目标在
-                  <Link to="/targets">探测目标</Link>页面管理。
-                </>
-              }
             >
               <div className={cx(page.panel, s.body)}>
                 <Fieldset legend="选择方式">
@@ -764,7 +753,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                       card
                       name="selection"
                       label={selectionLabel.auto}
-                      description="Agent 按分组规则探测候选节点，自动选出可用的节点。"
                       checked={auto}
                       onChange={() => update({ selection: 'auto' })}
                     />
@@ -773,7 +761,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                       card
                       name="selection"
                       label={selectionLabel.manual}
-                      description="不探测、不自动切换，在设备页手动选节点。"
+                      description="不探测，在设备页选择节点。"
                       checked={!auto}
                       onChange={() => update({ selection: 'manual' })}
                     />
@@ -800,7 +788,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                             card
                             name="targetMode"
                             label="全部规则"
-                            description="每条规则都通过才算可用。适合要同时连好几个服务的情况。"
                             checked={draft.targetMode === 'all'}
                             onChange={() => update({ targetMode: 'all' })}
                           />
@@ -809,7 +796,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                             card
                             name="targetMode"
                             label="任意一条规则"
-                            description="有一条通过就算可用。适合几个目标互为备用，比如同一台服务器的 22 和 443 端口。"
                             checked={draft.targetMode === 'any'}
                             onChange={() => update({ targetMode: 'any' })}
                           />
@@ -838,7 +824,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               title="切换设置"
               id="switching"
               collapsible
-              description={auto ? undefined : '手动选择的分组不探测，只需要决定切换时要不要断开已有连接。'}
             >
               <div className={cx(page.panel, s.body)}>
                 {auto && (
@@ -850,7 +835,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                           card
                           name="strategy"
                           label="按优先级"
-                          description="用排在最前面的可用节点。当前节点一直可用就不换。"
+                          description="选择首个可用节点。"
                           checked={draft.strategy === 'priority'}
                           onChange={() => update({ strategy: 'priority' })}
                         />
@@ -859,7 +844,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                           card
                           name="strategy"
                           label="按延迟"
-                          description="用延迟最低的可用节点。新节点要快出容差才换，避免来回跳。"
+                          description="选择延迟最低的节点，切换受容差限制。"
                           checked={draft.strategy === 'latency'}
                           onChange={() => update({ strategy: 'latency' })}
                         />
@@ -871,7 +856,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                         field="failThreshold"
                         label="判定不可用"
                         unit="轮"
-                        hint="连续失败这么多轮，才认为节点不可用。1–10。"
+                        hint="连续失败轮数，1–10。"
                         min={1}
                         max={10}
                         value={draft.failThreshold}
@@ -882,7 +867,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                         field="recoverThreshold"
                         label="判定恢复"
                         unit="轮"
-                        hint="不可用的节点连续成功这么多轮，才重新参与选择。1–10。"
+                        hint="连续成功轮数，1–10。"
                         min={1}
                         max={10}
                         value={draft.recoverThreshold}
@@ -905,7 +890,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                           field="toleranceMs"
                           label="延迟容差"
                           unit="ms"
-                          hint="当前节点比最快的慢出这么多算「明显变慢」，连续两轮都如此才切过去。经代理测的延迟本身会上下跳一两百毫秒，设得太小会在差不多快的节点之间来回切。0–1000。"
+                          hint="连续两轮超过容差才切换，0–1000 ms。"
                           min={0}
                           max={1000}
                           value={draft.toleranceMs}
@@ -922,14 +907,13 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                   {auto && draft.strategy === 'priority' && (
                     <Check
                       label="更靠前的节点恢复后切回去"
-                      description="关掉后，只要当前节点可用就一直用它，切换次数更少。"
                       checked={draft.failback}
                       onChange={(e) => update({ failback: e.target.checked })}
                     />
                   )}
                   <Check
                     label="切换时断开已有连接"
-                    description="关掉时，切换只影响新连接：已经打开的连接（比如 SSH 会话、WebSocket）继续走旧节点，断开重连后才走新节点。打开后，切换时会断开经过旧节点的连接，正在进行的传输会中断。"
+                    description="开启会中断现有传输；关闭时仅影响新连接。"
                     checked={draft.interruptExisting}
                     onChange={(e) => update({ interruptExisting: e.target.checked })}
                   />
@@ -942,7 +926,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                 title="全部节点都不可用时"
                 id="all-fail"
                 collapsible
-                description="无论选哪种，都会记一条严重事件并在总览页提醒。"
               >
                 <div className={cx(page.panel, s.body)}>
                   <Fieldset legend="怎样处理这些连接">
@@ -953,7 +936,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                         name="onAllFail"
                         label="阻断"
                         aside="推荐"
-                        description="拒绝这些连接，程序会马上报错，不会悄悄换一条路。有节点恢复后自动解除。"
+                        description="拒绝新连接，节点恢复后解除。"
                         checked={draft.onAllFail === 'block'}
                         onChange={() => update({ onAllFail: 'block' })}
                       />
@@ -962,7 +945,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                         card
                         name="onAllFail"
                         label="保持当前节点"
-                        description="继续用最后选中的节点，新连接多半会超时。"
+                        description="新连接可能超时。"
                         checked={draft.onAllFail === 'keep-last'}
                         onChange={() => update({ onAllFail: 'keep-last' })}
                       />
@@ -971,7 +954,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                         card
                         name="onAllFail"
                         label="改走直连"
-                        description="不经过代理直接连接。对方会看到这台设备的真实 IP，连接也可能被所在网络拦截。"
+                        description="对方可见设备的真实 IP，连接可能受网络限制。"
                         checked={draft.onAllFail === 'direct'}
                         onChange={() => update({ onAllFail: 'direct' })}
                       />
