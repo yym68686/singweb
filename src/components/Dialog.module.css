@@ -3,7 +3,7 @@
   max-height: calc(100dvh - 48px);
   padding: 0;
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--r-panel);
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--shadow-float);

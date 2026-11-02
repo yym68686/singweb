@@ -176,22 +176,17 @@
 .card {
   padding: 7px 8px;
   border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
+  border-radius: var(--r-control);
   background: transparent;
-  transition:
-    border-color var(--dur) var(--ease-out),
-    background-color var(--dur) var(--ease-out);
+  transition: background-color var(--dur) var(--ease-out);
 }
 
 .card:hover {
-  border-color: var(--field-border);
+  background: var(--hover);
 }
 
 .card:has(input:checked) {
-  border-color: var(--line);
   background: var(--hover);
-  box-shadow: none;
 }
 
 .card:has(input:focus-visible) {
@@ -213,41 +208,41 @@
 .switch {
   position: relative;
   flex: none;
-  width: 36px;
-  height: 20px;
+  width: 38px;
+  height: 22px;
   padding: 0;
-  border: 1px solid var(--field-border);
-  border-radius: var(--r-pill);
-  background: var(--panel-2);
-  transition: background-color var(--dur) var(--ease-out);
+  border: 1px solid var(--ink-2);
+  border-radius: var(--r-control);
+  background: var(--hover-2);
+  transition: background-color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
 }
 
-/* 开关只有 20px 高，把点击区域向外扩到 44px 见方，手机上好点 */
+/* Keep a 44px touch target without making dense record rows taller. */
 .switch::after {
   content: '';
   position: absolute;
-  inset: -13px -5px;
+  inset: -11px -3px;
 }
 
 .thumb {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: calc(var(--r-control) - 2px);
   background: var(--ink-2);
   transition: transform var(--dur) var(--ease-out);
 }
 
 .on {
-  border-color: var(--accent-btn);
-  background: var(--accent-btn);
+  border-color: var(--accent-ink);
+  background: var(--accent-ink);
 }
 
 .on .thumb {
   transform: translateX(16px);
-  background: #fff;
+  background: var(--page);
 }
 
 .switch:disabled,
@@ -264,9 +259,10 @@
 .formError {
   display: flex;
   gap: 10px;
-  padding: 10px 0 10px 12px;
+  padding: 10px 12px;
   border-left: 3px solid var(--crit);
-  background: transparent;
+  border-radius: var(--r-control);
+  background: var(--crit-soft);
   color: var(--ink);
 }
 

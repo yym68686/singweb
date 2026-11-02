@@ -94,10 +94,9 @@
 }
 
 .enrollState:not(:empty) {
-  padding: 10px 0;
-  border-block: 1px solid var(--line);
-  border-radius: 0;
-  background: transparent;
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  background: var(--panel-2);
 }
 
 .enrollState > svg {

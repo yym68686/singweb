@@ -270,6 +270,77 @@ test('node records keep details out of the list and open them in a focused dialo
   await expect(list.getByRole('button', { name: '详情' })).toBeFocused()
 })
 
+for (const theme of ['light', 'dark']) {
+  test(`shared controls use compact corners and distinguish switch states in ${theme}`, async ({ page }, testInfo) => {
+    await installApiMocks(page, { populated: true })
+    await page.addInitScript((value) => localStorage.setItem('singweb.theme', value), theme)
+    const source = {
+      id: 'source-1', name: '测试订阅', enabled: true, url: 'https://example.com/subscription',
+      lastFetchedAt: '2026-01-01T00:00:00.000Z', lastError: '没有解析出节点', nodeCount: 2,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }
+    let secondEnabled = false
+    await page.route('**/api/v1/sources', (route) => route.fulfill({ json: { items: [source] } }))
+    await page.route('**/api/v1/sources/source-1/refresh', (route) => route.fulfill({ json: { ok: false, error: source.lastError, nodeCount: 2 } }))
+    await page.route('**/api/v1/nodes', (route) => route.fulfill({ json: { items: [node, { ...node, id: 'node-2', tag: '备用节点', enabled: secondEnabled }] } }))
+    await page.route('**/api/v1/nodes/node-2', (route) => {
+      secondEnabled = route.request().postDataJSON().enabled
+      return route.fulfill({ json: { ...node, id: 'node-2', tag: '备用节点', enabled: secondEnabled } })
+    })
+    await page.goto('/nodes')
+    const list = page.getByRole('list', { name: '代理节点列表' })
+    await expect(list.getByRole('switch')).toHaveCount(2)
+    for (const control of await list.getByRole('switch').all()) {
+      const appearance = await control.evaluate((element) => {
+        const track = getComputedStyle(element)
+        const thumb = getComputedStyle(element.firstElementChild!)
+        const context = document.createElement('canvas').getContext('2d')!
+        const luminance = (color: string) => {
+          context.fillStyle = color
+          context.fillRect(0, 0, 1, 1)
+          const channels = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map((v) => {
+            const value = v / 255
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+          })
+          return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+        }
+        const a = luminance(track.backgroundColor)
+        const b = luminance(thumb.backgroundColor)
+        return { contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), radius: track.borderRadius, transform: thumb.transform }
+      })
+      expect(appearance.radius).toBe('6px')
+      expect(appearance.contrast).toBeGreaterThanOrEqual(3)
+      expect(appearance.transform).toBe(await control.getAttribute('aria-checked') === 'true' ? 'matrix(1, 0, 0, 1, 16, 0)' : 'none')
+    }
+    const chips = page.getByRole('group', { name: '节点状态' })
+    for (const chip of await chips.getByRole('button').all()) {
+      await expect(chip).toHaveCSS('border-radius', '6px')
+      await expect(chip).toHaveCSS('box-shadow', 'none')
+    }
+    await chips.getByRole('button', { name: '已停用 1' }).click()
+    await expect(list.getByRole('listitem')).toHaveCount(1)
+    await chips.getByRole('button', { name: '全部 2' }).click()
+    await expect(list.getByRole('listitem')).toHaveCount(2)
+    await expect(page.getByText('拉取失败', { exact: true }).locator('..')).toHaveCSS('border-radius', '6px')
+    await expect(page.getByRole('button', { name: '导入节点' })).toHaveCSS('border-radius', '6px')
+    await page.getByRole('button', { name: '刷新', exact: true }).click()
+    const toast = page.getByRole('status').filter({ hasText: '拉取「测试订阅」失败' }).locator('div').first()
+    await expect(toast).toBeVisible()
+    await expect(toast).toHaveCSS('border-radius', '6px')
+    await page.screenshot({ path: testInfo.outputPath(`controls-${theme}.png`), fullPage: true })
+    await page.getByRole('button', { name: '关闭提示' }).click()
+    const toggle = list.getByRole('switch', { name: '启用 备用节点' })
+    await toggle.focus()
+    await page.keyboard.press('Space')
+    await expect(list.getByRole('switch', { name: '停用 备用节点' })).toHaveAttribute('aria-checked', 'true')
+    await expect(list.getByRole('switch', { name: '停用 备用节点' })).toBeFocused()
+    await page.getByRole('button', { name: '导入节点' }).click()
+    const dialog = page.getByRole('dialog', { name: '导入节点' })
+    await expect(dialog).toHaveCSS('border-radius', '6px')
+    await expect(dialog.getByLabel('名称')).toHaveCSS('border-radius', '6px')
+  })
+}
+
 test('device details retain metadata and fit outlet controls in the first viewport', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await installApiMocks(page, { populated: true })

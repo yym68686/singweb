@@ -19,10 +19,12 @@
   --sp-6: 22px;
   --sp-7: 30px;
   --sp-8: 40px;
-  --r-panel: 0px;
-  --r-btn: 8px;
-  --r-input: 8px;
-  --r-pill: 999px;
+  /* One compact corner treatment for controls, status labels and overlays. */
+  --r-control: 6px;
+  --r-panel: var(--r-control);
+  --r-btn: var(--r-control);
+  --r-input: var(--r-control);
+  --r-chip: var(--r-control);
   --content-max: 1080px;
   --sticky-top: 64px;
   --control-h: 32px;

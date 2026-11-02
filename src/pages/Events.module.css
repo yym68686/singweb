@@ -26,7 +26,7 @@
   font-size: var(--fs-13);
   font-weight: 600;
 }
-.filters { border-block: 1px solid var(--line-strong); }
+.filters { border-bottom: 1px solid var(--line); }
 .filters > summary { display: flex; align-items: center; gap: 8px; min-height: 48px; font-weight: 600; list-style: none; }
 .filters > summary::-webkit-details-marker { display: none; }
 .filters > summary svg { width: 16px; height: 16px; color: var(--ink-2); }

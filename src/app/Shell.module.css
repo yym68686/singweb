@@ -1,5 +1,5 @@
 .shell { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100dvh; }
-.skip { position: fixed; top: 8px; left: 8px; z-index: 300; padding: 9px 14px; border-radius: 8px; background: var(--ink); color: var(--canvas); transform: translateY(-180%); }
+.skip { position: fixed; top: 8px; left: 8px; z-index: 300; padding: 9px 14px; border-radius: var(--r-control); background: var(--ink); color: var(--canvas); transform: translateY(-180%); }
 .skip:focus-visible { transform: none; }
 .topbar { position: sticky; top: 0; z-index: 20; grid-column: 1; grid-row: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--page) 92%, transparent); backdrop-filter: blur(16px); }
 .brand { display: inline-flex; align-items: center; gap: 9px; min-height: 38px; color: var(--ink); font-size: 16px; font-weight: 650; letter-spacing: -0.03em; }
@@ -11,11 +11,11 @@
 .topActions { display: flex; align-items: center; gap: 8px; }
 .topCount { display: inline-flex; align-items: center; min-height: 32px; }
 .topCount:hover { text-decoration: none; }
-.count { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; background: var(--red-tint); color: var(--red); font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.count { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: var(--r-chip); background: var(--red-tint); color: var(--red); font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .count svg { width: 13px; height: 13px; }
 .nav { display: flex; flex-direction: column; margin-top: 14px; }
 .navList { display: flex; flex-direction: column; gap: 2px; }
-.link { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 0 10px; border-radius: 7px; color: var(--ink-2); font-weight: 500; }
+.link { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 0 10px; border-radius: var(--r-control); color: var(--ink-2); font-weight: 500; }
 .link:hover { background: var(--hover); color: var(--ink); text-decoration: none; }
 .link svg { width: 18px; height: 18px; }
 .linkText { flex: 1; }

@@ -72,7 +72,7 @@
   margin-right: 0.5em;
 }
 
-/* 订阅来源列表：一项一个订阅，左边一条线把同一项里的几行圈在一起 */
+/* One quiet separator between subscription records, not around each section. */
 .sources {
   display: flex;
   flex-direction: column;
@@ -100,6 +100,7 @@
 }
 
 .recordMain { min-width: 0; }
+.record:first-child { border-top: 0; }
 .recordTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .recordStat { color: var(--ink-2); font-size: var(--fs-13); white-space: nowrap; }
 
@@ -202,8 +203,8 @@
   flex-direction: column;
   gap: var(--sp-3);
 }
-.filter { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 8px; border-block: 1px solid var(--line); }
-.nodes { display: flex; flex-direction: column; border-block: 1px solid var(--line-strong); }
+.filter { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
+.nodes { display: flex; flex-direction: column; }
 .nodeRow { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1fr) auto auto; align-items: center; gap: var(--sp-3); min-width: 0; padding: 12px 0; border-top: 1px solid var(--line); }
 .nodeRow:first-child { border-top: 0; }
 .nodeIdentity, .nodeSource { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
@@ -213,7 +214,7 @@
 .nodeActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .nodeDetails { display: flex; flex-direction: column; gap: 12px; padding: 0 4px 16px; }
 .detailLabel { margin-bottom: 4px; color: var(--ink-2); font-size: 12px; }
-.enableRow { display: flex; align-items: center; justify-content: space-between; min-height: 44px; border-top: 1px solid var(--line); }
+.enableRow { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
 .buckets { display: flex; flex-direction: column; gap: 4px; }
 .outlets { display: flex; flex-direction: column; gap: 6px; }
 .outlets li { display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 6px 0; border-top: 1px solid var(--line); }

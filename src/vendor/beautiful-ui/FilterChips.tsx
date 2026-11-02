@@ -14,9 +14,9 @@ export function FilterChips<T extends string>({ label, options, value, onChange 
         const active = value === option.value
         return (
           <button key={option.value} type="button" aria-pressed={active} onClick={() => onChange(option.value)}
-            className={`flex min-h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-[background-color,box-shadow,color] duration-200 ${active ? 'bg-surface text-ink shadow-btn' : 'text-ink-2 hover:bg-hover'}`}>
+            className={`flex min-h-8 items-center gap-1.5 rounded-[var(--r-control)] px-3 text-[13px] font-medium transition-colors duration-200 ${active ? 'bg-hover-2 text-ink' : 'text-ink-2 hover:bg-hover'}`}>
             {option.label}
-            {option.count !== undefined && <span className={`rounded-[4px] px-1 text-[11px] tabular-nums ${active ? 'bg-field text-ink-2' : 'text-ink-3'}`}>{option.count}</span>}
+            {option.count !== undefined && <span className="text-[11px] tabular-nums text-ink-2">{option.count}</span>}
           </button>
         )
       })}

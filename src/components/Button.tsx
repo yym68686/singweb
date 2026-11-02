@@ -36,9 +36,10 @@ export function Button({
       type={type}
       className={cx(
         buttonVariants({ variant: variant === 'ghost' ? 'quiet' : variant === 'danger' ? 'primary' : variant, size }),
+        'rounded-[var(--r-control)]',
         variant === 'danger' && 'bg-red text-white hover:brightness-95',
         pending && 'opacity-60 cursor-progress',
-        !children && 'size-9 !p-0 rounded-control',
+        !children && 'size-9 !p-0',
         className,
       )}
       // 进行中不设 disabled：按钮被禁用时浏览器会把焦点移走，键盘用户就回不到原来的位置了。
@@ -66,8 +67,9 @@ export function ButtonLink({
     <Link
       className={cx(
         buttonVariants({ variant: variant === 'ghost' ? 'quiet' : variant === 'danger' ? 'primary' : variant, size }),
+        'rounded-[var(--r-control)]',
         variant === 'danger' && 'bg-red text-white hover:brightness-95',
-        !children && 'size-9 !p-0 rounded-control',
+        !children && 'size-9 !p-0',
         className,
       )}
       {...rest}

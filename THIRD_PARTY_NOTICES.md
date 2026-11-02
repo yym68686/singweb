@@ -10,6 +10,8 @@ Adapters: use the existing data-theme attribute and class-name helper; preserve 
 
 FilterChips accepts real record counts and translated labels, uses aria-pressed, and wraps at narrow widths. Records Table and Filter Table inform the application's compact semantic tables, quiet row hover and explicit detail actions; demo AI calculations and editable property controls are omitted. The upstream loading-state demo is intentionally not included or used; application loading uses a compact content skeleton.
 
+Application controls adapt the upstream pill treatment to one shared 6px corner token. FilterChips uses a quiet selected fill without an outline or nested count badge; SegmentedControl uses inset corners, and SearchField uses a filled input without an extra separator. The shared Button adapter overrides upstream pill radii without changing button behavior or variants.
+
 MIT License
 
 Copyright (c) 2026 Shane Levine

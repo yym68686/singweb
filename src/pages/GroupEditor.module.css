@@ -78,7 +78,6 @@
 .timing {
   max-width: 72ch;
   padding: 10px 0;
-  border-block: 1px solid var(--line);
   font-size: var(--fs-13);
 }
 
@@ -94,7 +93,7 @@
 .order {
   display: flex;
   flex-direction: column;
-  border-block: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
 }
 
 .orderItem {
@@ -116,7 +115,7 @@
   flex: none;
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: var(--r-chip);
   background: var(--panel-2);
   color: var(--ink-2);
   font-size: var(--fs-12);
@@ -152,7 +151,6 @@
 
 .orderEmpty {
   padding: var(--sp-4);
-  border-block: 1px dashed var(--line-strong);
   color: var(--ink-2);
 }
 
@@ -241,12 +239,11 @@
 
 .previewEmpty {
   padding: var(--sp-5) var(--sp-4);
-  border-block: 1px dashed var(--line-strong);
   color: var(--ink-2);
   font-size: var(--fs-13);
 }
 
-/* 接管条件、筛选条件：每一类一个小标题，标题后接一条细线 */
+/* Field categories use typography and spacing rather than decorative rules. */
 .categories {
   display: flex;
   flex-direction: column;
@@ -270,13 +267,6 @@
   font-weight: 600;
 }
 
-.categoryTitle::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-
 .checkGrid {
   display: flex;
   flex-direction: column;
@@ -287,7 +277,6 @@
 .summary {
   max-width: 72ch;
   padding: 10px 0;
-  border-block: 1px solid var(--line);
   font-size: var(--fs-13);
 }
 

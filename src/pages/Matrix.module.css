@@ -188,7 +188,7 @@
 
 .outletTag {
   padding: 0 6px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-chip);
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-12);

@@ -54,8 +54,8 @@
   padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-3);
   border: 0;
   border-left: 3px solid var(--warn);
-  border-radius: 0;
-  background: transparent;
+  border-radius: var(--r-control);
+  background: var(--warn-soft);
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -64,6 +64,7 @@
 
 .pendingFailed {
   border-left-color: var(--crit, #c0392b);
+  background: var(--crit-soft);
 }
 
 .pendingText {
@@ -120,7 +121,7 @@
 
 .activeTag {
   padding: 0 6px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-chip);
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-12);
@@ -151,7 +152,7 @@
   gap: 6px;
   min-height: 44px;
   padding: 8px 4px;
-  border-block: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: transparent;
   font-size: var(--fs-14);
   font-weight: 600;
