@@ -37,11 +37,9 @@ import { ConfirmDialog, Dialog } from '../components/Dialog'
 import { Check, Field, Fieldset, Select, TextArea, TextInput, UnitInput } from '../components/Form'
 import { Menu } from '../components/Menu'
 import { Notice } from '../components/Notice'
-import { PageHeader, Section } from '../components/PageHeader'
-import { revealElement } from '../components/Disclosure'
-import { Disclosure } from '../components/Disclosure'
+import { Section } from '../components/PageHeader'
 import { Segmented } from '../components/Segmented'
-import { EmptyState, Loadable } from '../components/States'
+import { EmptyState, ErrorState, Loadable, LoadingState } from '../components/States'
 import {
   TargetFields,
   emptyDraft,
@@ -69,11 +67,15 @@ import {
   targetKindLabel,
 } from '../lib/labels'
 import { MIN_SINGBOX, singboxTooOld, toJson } from '../lib/singbox'
+import { FilterChips } from '../vendor/beautiful-ui/FilterChips'
 import page from '../styles/page.module.css'
 import s from './GroupEditor.module.css'
 
 export default function GroupEditor() {
-  const { id } = useParams()
+  const params = useParams()
+  const id = params.groupId ?? params.id
+  const returnTo = params.groupId ? `/devices/${params.id}` : '/groups'
+  const navigate = useNavigate()
   const catalog = useCatalog()
   const found = id ? catalog.data?.group.get(id) : undefined
   // 删除成功到跳走之间、或者别处删掉了它，分组会从列表里消失；
@@ -82,24 +84,22 @@ export default function GroupEditor() {
   if (found && found !== last) setLast(found)
   const group = found ?? (id && last?.id === id ? last : undefined)
 
-  return (
-    <Loadable data={catalog.data} error={catalog.error} retry={catalog.retry}>
-      {(c) =>
-        id && !group ? (
-          <>
-            <PageHeader back={{ to: '/groups', label: '分组' }} title="找不到这个分组" />
+  if (!catalog.data || (id && !group)) {
+    return (
+      <Dialog open onClose={() => navigate(returnTo, { preventScrollReset: true })} title={id ? '编辑分组' : '新建分组'} wide>
+        <Loadable data={catalog.data} error={catalog.error} retry={catalog.retry}>
+          {() => (
             <EmptyState
               icon={Split}
               title="这个分组不存在，或者已经被删除"
-              action={<ButtonLink to="/groups">查看所有分组</ButtonLink>}
+              action={<ButtonLink to={returnTo} preventScrollReset>返回</ButtonLink>}
             />
-          </>
-        ) : (
-          <Editor key={id ?? 'new'} group={group} c={c} />
-        )
-      }
-    </Loadable>
-  )
+          )}
+        </Loadable>
+      </Dialog>
+    )
+  }
+  return <Editor key={id ?? 'new'} group={group} c={catalog.data} returnTo={returnTo} catalogError={catalog.error} retry={catalog.retry} />
 }
 
 /** 表单里的数字和列表先按字符串保存，交给服务端统一校验 */
@@ -321,14 +321,22 @@ const errorKeys: Partial<Record<keyof Draft, string[]>> = {
 }
 
 type Errors = Partial<Record<string, string>>
+type EditorTab = 'basics' | 'match' | 'nodes' | 'rules' | 'switching' | 'preview'
 
-function Editor({ group, c }: { group?: Group; c: Catalog }) {
+function Editor({ group, c, returnTo, catalogError, retry }: { group?: Group; c: Catalog; returnTo: string; catalogError: unknown; retry: () => void }) {
   const isNew = !group
   const navigate = useNavigate()
   const toast = useToast()
   const save = useSaveGroup()
   const del = useDeleteGroup()
   const formRef = useRef<HTMLFormElement>(null)
+  const formId = useId()
+  const tabsId = useId()
+  const [tab, setTab] = useState<EditorTab>('basics')
+  const [previewActivated, setPreviewActivated] = useState(false)
+  useEffect(() => {
+    if (tab === 'preview') setPreviewActivated(true)
+  }, [tab])
 
   const [initial] = useState(() => toDraft(group))
   const [draft, setDraft] = useState(initial)
@@ -362,9 +370,13 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
   useEffect(() => {
     const field = focusNext.current
     if (!field) return
-    focusNext.current = null
     const box = formRef.current?.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`)
-    revealElement(box)
+    const panel = box?.closest<HTMLElement>('[role="tabpanel"]')
+    if (panel && panel.id !== tab) {
+      setTab(panel.id as EditorTab)
+      return
+    }
+    focusNext.current = null
     const el = box?.querySelector<HTMLElement>(
       'input:not(:disabled), select:not(:disabled), textarea, button:not(:disabled)',
     )
@@ -373,7 +385,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
       block: 'center',
       behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
     })
-  }, [errors])
+  }, [errors, tab])
 
   const update = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }))
@@ -411,7 +423,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                 ? `已创建分组「${g.name}」，Agent 下一轮开始探测`
                 : `已创建分组「${g.name}」`,
           )
-          navigate('/groups')
+          navigate(returnTo, { preventScrollReset: true })
         },
         onError: (err) => {
           const msg = errorMessage(err)
@@ -432,7 +444,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
         leaving.current = true
         setConfirmDelete(false)
         toast(`已删除分组「${group.name}」`)
-        navigate('/groups')
+        navigate(returnTo, { preventScrollReset: true })
       },
     })
   }
@@ -471,16 +483,44 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
 
   return (
     <>
-      <PageHeader
-        back={{ to: '/groups', label: '分组' }}
-        title={group ? group.name : '新建分组'}
-        docTitle={group ? `编辑 ${group.name}` : '新建分组'}
-      />
-
-      <div className={s.layout}>
-        <div className={page.stack}>
-          <form ref={formRef} className={page.stack} onSubmit={onSubmit} noValidate>
-            <Section title="基本信息" id="basics" collapsible defaultOpen>
+      <Dialog
+        open
+        wide
+        title={group ? `编辑 ${group.name}` : '新建分组'}
+        onClose={() => navigate(returnTo, { preventScrollReset: true })}
+        footer={
+          <>
+            <div className={s.footerStatus}>
+              {formError ? (
+                <p className={s.footerError} role="alert"><CircleAlert aria-hidden />{formError}</p>
+              ) : <p className={page.sub}>{dirty ? '有未保存的修改' : ''}</p>}
+            </div>
+            <div className={s.footerActions}>
+              {group && <Button variant="ghost" icon={Trash} aria-label="删除分组" onClick={() => setConfirmDelete(true)} />}
+              <Button onClick={() => navigate(returnTo, { preventScrollReset: true })}>取消</Button>
+              <Button type="submit" form={formId} variant="primary" icon={Save} pending={save.isPending}>
+                {isNew ? '创建分组' : '保存修改'}
+              </Button>
+            </div>
+          </>
+        }
+      >
+        {!!catalogError && <ErrorState title="刷新失败，下面保留上次的数据" error={catalogError} onRetry={retry} />}
+        <div className={s.tabs}>
+        <FilterChips<EditorTab>
+          label="分组设置"
+          tabsId={tabsId}
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'basics', label: '基本' }, { value: 'match', label: '流量' },
+            { value: 'nodes', label: '节点' }, { value: 'rules', label: '规则' },
+            { value: 'switching', label: '切换' }, { value: 'preview', label: '预览' },
+          ]}
+        />
+        </div>
+          <form id={formId} ref={formRef} className={page.stack} onSubmit={onSubmit} noValidate>
+            <Section title="基本信息" id="basics" hidden={tab !== 'basics'} tabId={`${tabsId}-basics`}>
               <div className={cx(page.panel, s.body)}>
                 <div className={s.row2}>
                   <div data-field="name">
@@ -488,6 +528,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                       {(a) => (
                         <TextInput
                           {...a}
+                          data-autofocus
                           value={draft.name}
                           maxLength={40}
                           placeholder="例如 AI 服务"
@@ -574,7 +615,8 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
             <Section
               title="接管哪些流量"
               id="match"
-              collapsible
+              hidden={tab !== 'match'}
+              tabId={`${tabsId}-match`}
               description="留空时接管未被其他分组匹配的流量。"
             >
               <div className={cx(page.panel, s.body)}>
@@ -711,7 +753,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               </div>
             </Section>
 
-            <Section title="候选节点" id="nodes" collapsible>
+            <Section title="候选节点" id="nodes" hidden={tab !== 'nodes'} tabId={`${tabsId}-nodes`}>
               <div className={cx(page.panel, s.body)}>
                 <Segmented
                   legend="加入方式"
@@ -743,7 +785,8 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
             <Section
               title="分组规则"
               id="rules"
-              collapsible
+              hidden={tab !== 'rules'}
+              tabId={`${tabsId}-rules`}
             >
               <div className={cx(page.panel, s.body)}>
                 <Fieldset legend="选择方式">
@@ -820,10 +863,9 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               </div>
             </Section>
 
+            <div id="switching" className={page.stack} role="tabpanel" tabIndex={0} hidden={tab !== 'switching'} aria-labelledby={`${tabsId}-switching`}>
             <Section
               title="切换设置"
-              id="switching"
-              collapsible
             >
               <div className={cx(page.panel, s.body)}>
                 {auto && (
@@ -925,7 +967,6 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
               <Section
                 title="全部节点都不可用时"
                 id="all-fail"
-                collapsible
               >
                 <div className={cx(page.panel, s.body)}>
                   <Fieldset legend="怎样处理这些连接">
@@ -963,50 +1004,12 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
                 </div>
               </Section>
             )}
-
-            <div className={s.footer}>
-              <div className={s.footerStatus}>
-                {formError ? (
-                  <p className={s.footerError} role="alert">
-                    <CircleAlert aria-hidden />
-                    {formError}
-                  </p>
-                ) : (
-                  <p className={page.sub}>{dirty ? '有未保存的修改' : isNew ? '' : '没有修改'}</p>
-                )}
-              </div>
-              <div className={s.footerActions}>
-                <ButtonLink to="/groups">取消</ButtonLink>
-                <Button type="submit" variant="primary" icon={Save} pending={save.isPending}>
-                  {isNew ? '创建分组' : '保存修改'}
-                </Button>
-              </div>
             </div>
           </form>
-
-          {group && (
-            <Section title="删除分组" id="delete" collapsible>
-              <div className={cx(page.panel, s.body, s.danger)}>
-                <p>
-                  删除后，应用它的设备会移除 selector <span className="mono">{keepNames(group.selectorTag)}</span>{' '}
-                  和相关路由规则，这些连接改由 <span className="nowrap">sing-box</span> 的默认出站处理。
-                </p>
-                <div>
-                  <Button variant="danger" icon={Trash} onClick={() => setConfirmDelete(true)}>
-                    删除分组
-                  </Button>
-                </div>
-              </div>
-            </Section>
-          )}
-        </div>
-
-        <aside className={s.aside}>
-          <Disclosure title="配置预览" headingLevel={2} labelledBy="preview-title" lazy>
-            <Preview input={input} devices={devices} groupId={group?.id} />
-          </Disclosure>
-        </aside>
-      </div>
+          <Section title="配置预览" id="preview" hidden={tab !== 'preview'} tabId={`${tabsId}-preview`}>
+            {(tab === 'preview' || previewActivated) && <Preview input={input} devices={devices} groupId={group?.id} />}
+          </Section>
+      </Dialog>
 
       {group && (
         <ConfirmDialog
@@ -1046,7 +1049,7 @@ function Editor({ group, c }: { group?: Group; c: Catalog }) {
         danger
         onConfirm={() => blocker.proceed?.()}
       >
-        <p>这个分组还有没保存的修改，离开这个页面后会丢失。</p>
+        <p>未保存的修改会丢失。</p>
       </ConfirmDialog>
 
       {/* 对话框里有自己的表单，不能放进上面的 form */}
@@ -1694,7 +1697,7 @@ function Preview({ input, devices, groupId }: PreviewProps) {
               )}
             </>
           ) : (
-            <p className={s.previewEmpty}>正在生成配置…</p>
+            <LoadingState />
           )}
         </>
       )}

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Link, NavLink, Outlet, ScrollRestoration, useLocation, type Location } from 'react-router'
+import { Link, NavLink, Outlet, ScrollRestoration, type Location } from 'react-router'
 import {
   ClockFading,
   Gauge,
@@ -137,12 +137,6 @@ function CritCount({ n }: { n: number }) {
 
 function Nav({ critical, onNavigate }: { critical: number; onNavigate?: () => void }) {
   const configId = useId()
-  const location = useLocation()
-  const isConfigRoute = CONFIG_NAV.some(({ to }) => location.pathname === to || location.pathname.startsWith(`${to}/`))
-  const [configOpen, setConfigOpen] = useState(isConfigRoute)
-  useEffect(() => {
-    if (isConfigRoute) setConfigOpen(true)
-  }, [isConfigRoute])
   const item = (n: NavItem) => (
     <li key={n.to}>
       <NavLink to={n.to} end={n.end} className={({ isActive }) => (isActive ? `${s.link} ${s.active}` : s.link)} onClick={onNavigate}>
@@ -155,10 +149,10 @@ function Nav({ critical, onNavigate }: { critical: number; onNavigate?: () => vo
   return (
     <nav className={s.nav} aria-label="主导航">
       <ul className={s.navList}>{MAIN_NAV.map(item)}</ul>
-      <details className={s.config} open={configOpen} onToggle={(event) => setConfigOpen(event.currentTarget.open)}>
-        <summary className={s.navGroup} id={configId}>配置 <span aria-hidden>＋</span></summary>
+      <div className={s.config}>
+        <div className={s.navGroup} id={configId}>配置</div>
         <ul className={s.navList} aria-labelledby={configId}>{CONFIG_NAV.map(item)}</ul>
-      </details>
+      </div>
     </nav>
   )
 }

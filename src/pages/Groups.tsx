@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, Outlet } from 'react-router'
 import { Pencil, Plus, Split } from 'lucide-react'
 import { outletName, useCatalog, type Catalog } from '../api/catalog'
 import { useNow, useRuntimes } from '../api/hooks'
@@ -32,7 +32,7 @@ export default function Groups() {
         title="分组"
         metadata={catalog.data && `${catalog.data.groups.length} 个分组`}
         actions={
-          <ButtonLink to="/groups/new" variant="primary" icon={Plus}>
+          <ButtonLink to="/groups/new" preventScrollReset variant="primary" icon={Plus}>
             新建分组
           </ButtonLink>
         }
@@ -57,7 +57,7 @@ export default function Groups() {
               icon={Split}
               title="还没有分组"
               action={
-                <ButtonLink to="/groups/new" variant="primary" icon={Plus}>
+                <ButtonLink to="/groups/new" preventScrollReset variant="primary" icon={Plus}>
                   新建分组
                 </ButtonLink>
               }
@@ -65,6 +65,7 @@ export default function Groups() {
           )
         }
       </Loadable>
+      <Outlet />
     </>
   )
 }
@@ -82,9 +83,9 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
     <>
       <RecordRow
         icon={Split}
-        title={<Link to={`/groups/${g.id}`}>{g.name}</Link>}
+        title={<Link to={`/groups/${g.id}`} preventScrollReset>{g.name}</Link>}
         description={<>{auto ? strategyLabel[g.strategy] : '手动选择'} · {tags.length} 节点 · {groupDeviceIds(g, c.devices).length} 设备</>}
-        actions={<><Button variant="ghost" size="sm" onClick={() => setDetails(true)} aria-label={`详情 ${g.name}`}>详情</Button><ButtonLink to={`/groups/${g.id}`} size="sm" icon={Pencil} aria-label={`编辑${gapBefore(g.name)}${g.name}`}>编辑</ButtonLink></>}
+        actions={<><Button variant="ghost" size="sm" onClick={() => setDetails(true)} aria-label={`详情 ${g.name}`}>详情</Button><ButtonLink to={`/groups/${g.id}`} preventScrollReset size="sm" icon={Pencil} aria-label={`编辑${gapBefore(g.name)}${g.name}`}>编辑</ButtonLink></>}
       />
       <Dialog open={details} onClose={() => setDetails(false)} title={g.name} wide>
       <header className={page.panelHead}>
@@ -93,6 +94,8 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
         </span>
         <ButtonLink
           to={`/groups/${g.id}`}
+          preventScrollReset
+          onClick={() => setDetails(false)}
           size="sm"
           variant="ghost"
           icon={Pencil}

@@ -10,7 +10,7 @@
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--shadow-float);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .wide {
@@ -35,9 +35,11 @@
 .inner {
   display: flex;
   flex-direction: column;
+  max-height: calc(100dvh - 50px);
 }
 
 .header {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -50,6 +52,7 @@
 }
 
 .description {
+  flex: none;
   padding: 0 var(--sp-5) var(--sp-4);
   color: var(--ink-2);
 }
@@ -59,10 +62,14 @@
 }
 
 .body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0 var(--sp-5) var(--sp-5);
 }
 
 .footer {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

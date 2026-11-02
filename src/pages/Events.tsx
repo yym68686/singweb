@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { History, ListFilter, X } from 'lucide-react'
 import { useCatalog, type Catalog } from '../api/catalog'
@@ -5,6 +6,7 @@ import { errorMessage } from '../api/errors'
 import { useEvents, useNow } from '../api/hooks'
 import type { EventKind, EventQuery, Severity } from '../api/types'
 import { Button } from '../components/Button'
+import { Dialog } from '../components/Dialog'
 import { EventList } from '../components/EventList'
 import { Field, Select } from '../components/Form'
 import { PageHeader } from '../components/PageHeader'
@@ -51,6 +53,7 @@ export default function Events() {
 }
 
 function EventsBody({ c }: { c: Catalog }) {
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [params, setParams] = useSearchParams()
   const now = useNow()
 
@@ -87,8 +90,11 @@ function EventsBody({ c }: { c: Catalog }) {
 
   return (
     <div className={page.stackSm}>
-      <details className={s.filters}>
-        <summary><ListFilter aria-hidden />{filtered ? '筛选已启用' : '筛选事件'}</summary>
+      <div className={page.panelHead}>
+        <Button icon={ListFilter} onClick={() => setFiltersOpen(true)}>{filtered ? '筛选已启用' : '筛选事件'}</Button>
+        {filtered && <Button variant="ghost" icon={X} onClick={clear}>清除筛选</Button>}
+      </div>
+      <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="筛选事件" footer={<Button variant="primary" onClick={() => setFiltersOpen(false)}>完成</Button>}>
         <div className={cx(page.toolbar, s.toolbar)}>
         <Field label="设备">
           {(a) => (
@@ -139,7 +145,7 @@ function EventsBody({ c }: { c: Catalog }) {
           </Button>
         )}
         </div>
-      </details>
+      </Dialog>
 
       {items === undefined ? (
         events.error ? (

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { ChevronDown, type LucideIcon } from 'lucide-react'
 import { Button } from './Button'
 import { cx } from '../lib/cx'
@@ -48,16 +48,37 @@ export function Menu<T extends string>({
 
   const itemEls = () => [...(listRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])]
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
+    const menu = listRef.current
+    const button = buttonRef.current
+    if (!menu || !button) return
+    menu.showPopover()
+    const position = () => {
+      const anchor = button.getBoundingClientRect()
+      menu.style.minWidth = `${anchor.width}px`
+      const bounds = menu.getBoundingClientRect()
+      const left = align === 'end' ? anchor.right - bounds.width : anchor.left
+      const below = anchor.bottom + 4
+      const top = below + bounds.height <= innerHeight - 16 ? below : anchor.top - bounds.height - 4
+      menu.style.left = `${Math.max(16, Math.min(left, innerWidth - bounds.width - 16))}px`
+      menu.style.top = `${Math.max(16, top)}px`
+    }
+    position()
+    window.addEventListener('resize', position)
+    window.addEventListener('scroll', position, true)
     const els = itemEls()
     els.at(open.focus)?.focus()
     const onPointerDown = (e: PointerEvent) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(null)
     }
     document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [open])
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('resize', position)
+      window.removeEventListener('scroll', position, true)
+    }
+  }, [open, align])
 
   const close = (refocus: boolean) => {
     setOpen(null)
@@ -124,7 +145,8 @@ export function Menu<T extends string>({
           ref={listRef}
           id={`${id}-menu`}
           role="menu"
-          className={cx(s.menu, align === 'end' && s.end)}
+          popover="manual"
+          className={s.menu}
           onKeyDown={onMenuKey}
         >
           {items.map((it) => (

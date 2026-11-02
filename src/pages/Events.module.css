@@ -26,11 +26,6 @@
   font-size: var(--fs-13);
   font-weight: 600;
 }
-.filters { border-bottom: 1px solid var(--line); }
-.filters > summary { display: flex; align-items: center; gap: 8px; min-height: 48px; font-weight: 600; list-style: none; }
-.filters > summary::-webkit-details-marker { display: none; }
-.filters > summary svg { width: 16px; height: 16px; color: var(--ink-2); }
-.filters[open] { padding-bottom: 16px; }
 .toolbar { display: flex; flex-direction: column; align-items: stretch; }
 .toolbar > * { width: 100%; }
 .toolbar > button { width: auto; align-self: flex-start; }

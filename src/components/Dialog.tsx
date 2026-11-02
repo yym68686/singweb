@@ -15,6 +15,17 @@ interface DialogProps {
   wide?: boolean
 }
 
+function closeDialog(dialog: HTMLDialogElement, opener: HTMLElement | null) {
+  if (!dialog.open) return
+  dialog.close()
+  // 父子模态框一起卸载时，等所有遮罩都移除后再恢复最初的触发点。
+  queueMicrotask(() => {
+    const modal = document.querySelector('dialog:modal')
+    if (opener?.isConnected && (!modal || modal.contains(opener))) opener.focus({ preventScroll: true })
+    else if (!modal && document.activeElement === document.body) document.getElementById('main')?.focus({ preventScroll: true })
+  })
+}
+
 /**
  * 基于原生 <dialog> 的模态框：Esc 和点击遮罩都会关闭。
  * 打开时焦点落在第一个可以聚焦的元素上（通常是关闭按钮）；
@@ -22,6 +33,7 @@ interface DialogProps {
  */
 export function Dialog({ open, onClose, title, description, children, footer, wide }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
+  const opener = useRef<HTMLElement | null>(null)
   const titleId = useId()
   const descId = useId()
 
@@ -29,17 +41,18 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
     const d = ref.current
     if (!d) return
     if (open && !d.open) {
+      opener.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
       d.showModal()
       d.querySelector<HTMLElement>('[data-autofocus]')?.focus()
     }
-    if (!open && d.open) d.close()
+    if (!open) closeDialog(d, opener.current)
   }, [open])
 
   // 调用方直接卸载对话框时，也在节点移除前正常关闭它，浏览器才会把焦点还给打开它的按钮
   useLayoutEffect(() => {
     const d = ref.current
     return () => {
-      if (d?.open) d.close()
+      if (d) closeDialog(d, opener.current)
     }
   }, [])
 

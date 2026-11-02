@@ -20,7 +20,6 @@ import { Badge } from '../components/Badge'
 import { Button, ButtonLink } from '../components/Button'
 import { RecordRow } from '../components/RecordRow'
 import { CodeBlock } from '../components/CodeBlock'
-import { Disclosure } from '../components/Disclosure'
 import { Dialog } from '../components/Dialog'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented } from '../components/Segmented'
@@ -121,6 +120,7 @@ type Enrollment = ReturnType<typeof useEnrollment>
 
 function EnrollDialog({ e, c, now }: { e: Enrollment; c: Catalog | undefined; now: number }) {
   const [os, setOs] = useState<Os>(guessOs)
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const created = e.create.isPending ? undefined : e.create.data
   const joined = e.status.data?.state === 'joined' ? e.status.data : null
   // 接入之后读设备列表里的那份：它跟着每次上报实时更新，接入那一刻的快照不会
@@ -128,6 +128,7 @@ function EnrollDialog({ e, c, now }: { e: Enrollment; c: Catalog | undefined; no
   const showCommand = created && !joined && !e.expired
 
   return (
+    <>
     <Dialog
       open={e.open}
       onClose={e.close}
@@ -167,7 +168,13 @@ function EnrollDialog({ e, c, now }: { e: Enrollment; c: Catalog | undefined; no
               copyLabel="复制命令"
               code={installCommand(os, created.token)}
             />
-            <Disclosure title="安装选项与日志">
+            <Button variant="ghost" onClick={() => setOptionsOpen(true)}>安装选项与日志</Button>
+          </>
+        )}
+        <EnrollState e={e} joined={joined} device={device} now={now} />
+      </div>
+    </Dialog>
+    <Dialog open={e.open && optionsOpen} onClose={() => setOptionsOpen(false)} title="安装选项与日志">
             <p className={s.hint}>
               {os === 'macos' ? (
                 <>
@@ -181,12 +188,8 @@ function EnrollDialog({ e, c, now }: { e: Enrollment; c: Catalog | undefined; no
                 </>
               )}
             </p>
-            </Disclosure>
-          </>
-        )}
-        <EnrollState e={e} joined={joined} device={device} now={now} />
-      </div>
     </Dialog>
+    </>
   )
 }
 

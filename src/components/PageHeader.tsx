@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ChevronLeft } from 'lucide-react'
-import { Disclosure } from './Disclosure'
 import { useTitle } from '../lib/useTitle'
 import { keepNames } from '../lib/keepNames'
 import s from './PageHeader.module.css'
@@ -44,24 +43,14 @@ interface SectionProps {
   children: ReactNode
   className?: string
   id?: string
-  collapsible?: boolean
-  defaultOpen?: boolean
-  labelledBy?: string
+  hidden?: boolean
+  tabId?: string
 }
 
 /** 页面里的一个区块：二级标题、说明和右侧操作 */
-export function Section({ title, summary, description, actions, children, className, id, collapsible, defaultOpen, labelledBy }: SectionProps) {
-  if (collapsible) {
-    return (
-      <Disclosure title={title} meta={summary} id={id} defaultOpen={defaultOpen} className={className} labelledBy={labelledBy ?? (id ? `${id}-title` : undefined)} headingLevel={2} labelClassName={s.sectionTitle}>
-        {description && <div className={s.sectionDesc}>{keepNames(description)}</div>}
-        {actions && <div className={s.actions}>{actions}</div>}
-        {children}
-      </Disclosure>
-    )
-  }
+export function Section({ title, summary, description, actions, children, className, id, hidden, tabId }: SectionProps) {
   return (
-    <section id={id} className={className} aria-labelledby={id ? `${id}-title` : undefined}>
+    <section id={id} hidden={hidden} className={className} role={tabId ? 'tabpanel' : undefined} tabIndex={tabId ? 0 : undefined} aria-labelledby={tabId ?? (id ? `${id}-title` : undefined)}>
       <div className={s.sectionHead}>
         <div className={s.text}>
           <h2 id={id ? `${id}-title` : undefined} className={s.sectionTitle}>

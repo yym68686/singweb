@@ -102,8 +102,7 @@ svg {
   flex-shrink: 0;
 }
 
-details { min-width: 0; }
-summary { cursor: pointer; }
+[hidden] { display: none !important; }
 section, article, form { min-width: 0; }
 
 :focus-visible {

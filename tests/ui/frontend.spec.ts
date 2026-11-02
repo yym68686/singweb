@@ -128,7 +128,7 @@ test('all application routes render without runtime errors or page-level horizon
   expect(errors).toEqual([])
 })
 
-test('navigation and appearance controls remain keyboard-accessible and nested', async ({ page }) => {
+test('navigation remains visible and appearance controls remain keyboard-accessible', async ({ page }) => {
   await installApiMocks(page)
   await page.goto('/')
   await page.setViewportSize({ width: 1280, height: 900 })
@@ -138,20 +138,18 @@ test('navigation and appearance controls remain keyboard-accessible and nested',
   const main = await page.getByRole('main').boundingBox()
   expect(sidebar?.x).toBe(0)
   expect(sidebar!.x + sidebar!.width).toBeLessThanOrEqual(main!.x)
-  await page.locator('summary').filter({ hasText: '配置' }).click()
   await page.getByRole('link', { name: '分组' }).click()
   await expect(page.getByRole('heading', { name: '分组', level: 1 })).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: '打开导航' }).click()
   await expect(page.locator('dialog[open]')).toBeVisible()
-  await page.getByRole('dialog', { name: '导航' }).locator('summary').filter({ hasText: '外观' }).click()
   const drawer = page.getByRole('dialog', { name: '导航' })
-  await drawer.getByLabel('深色').check()
+  await drawer.getByLabel('外观').selectOption('dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await drawer.getByLabel('浅色').check()
+  await drawer.getByLabel('外观').selectOption('light')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  expect((await drawer.boundingBox())?.x).toBe(0)
+  await expect.poll(async () => (await drawer.boundingBox())?.x).toBe(0)
   await page.keyboard.press('Escape')
   await expect(drawer).not.toBeVisible()
   await expect(page.getByRole('button', { name: '打开导航' })).toBeFocused()
@@ -186,14 +184,15 @@ test('page data loading uses a reduced-motion-aware content skeleton', async ({ 
   await expect(page.getByRole('heading', { name: '节点', level: 1 })).toBeVisible()
 })
 
-test('server field errors reveal collapsed sections and focus the invalid field', async ({ page }) => {
+test('server field errors select the correct form tab and focus the invalid field', async ({ page }) => {
   await installApiMocks(page)
   await page.goto('/groups/new')
-  await expect(page.locator('#switching')).not.toHaveAttribute('open', '')
+  await expect(page.locator('#switching')).toBeHidden()
   await page.getByLabel('名称').fill('回归测试')
   await page.getByLabel('selector tag').fill('ui-test')
   await page.getByRole('button', { name: '创建分组' }).click()
-  await expect(page.locator('#switching')).toHaveAttribute('open', '')
+  await expect(page.getByRole('tab', { name: '切换', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('#switching')).toBeVisible()
   await expect(page.locator('[data-field="failThreshold"] input')).toBeFocused()
   await expect(page.getByRole('alert').filter({ hasText: '没有保存' })).toBeVisible()
 })
@@ -399,9 +398,200 @@ test('login remains usable without a session and reports rejected credentials', 
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport)
 })
 
+test('group creation keeps the list mounted, supports keyboard tabs and confirms discarded changes', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.goto('/groups')
+  const trigger = page.getByRole('link', { name: '新建分组' })
+  await page.locator('main h1').evaluate((element) => element.setAttribute('data-preserved', 'true'))
+  await trigger.click()
+  const editor = page.getByRole('dialog', { name: '新建分组', exact: true })
+  await expectDialogCentered(editor)
+  await expect(page.locator('main h1')).toHaveText('分组')
+  await expect(page.locator('main h1')).toHaveAttribute('data-preserved', 'true')
+  await expect(editor.getByLabel('名称', { exact: true })).toBeFocused()
+  await editor.getByLabel('名称', { exact: true }).fill('未保存草稿')
+  await editor.getByRole('tab', { name: '基本', exact: true }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(editor.getByRole('tab', { name: '流量', exact: true })).toBeFocused()
+  await expect(editor.getByRole('tabpanel', { name: '流量', exact: true })).toBeVisible()
+  await page.keyboard.press('End')
+  await expect(editor.getByRole('tab', { name: '预览', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('Home')
+  await expect(editor.getByLabel('名称', { exact: true })).toHaveValue('未保存草稿')
+  await page.keyboard.press('Escape')
+  const confirmation = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+  await expectDialogCentered(confirmation)
+  await confirmation.getByRole('button', { name: '取消' }).click()
+  await expect(editor.getByLabel('名称', { exact: true })).toHaveValue('未保存草稿')
+  await editor.getByRole('button', { name: '取消', exact: true }).click()
+  await confirmation.getByRole('button', { name: '放弃修改' }).click()
+  await expect(page).toHaveURL(/\/groups$/)
+  await expect(page.locator('dialog[open]')).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+})
+
+test('editing a group from a device preserves that device page and its trigger', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.goto('/devices/device-1')
+  await page.locator('main h1').evaluate((element) => element.setAttribute('data-preserved', 'true'))
+  const trigger = page.getByRole('link', { name: '编辑分组', exact: true })
+  await trigger.scrollIntoViewIfNeeded()
+  const scroll = await page.evaluate(() => scrollY)
+  await trigger.click()
+  const editor = page.getByRole('dialog', { name: '编辑 默认分组' })
+  await expectDialogCentered(editor)
+  await expect(page).toHaveURL(/\/devices\/device-1\/groups\/group-1\/edit$/)
+  await expect(page.locator('main h1')).toHaveText('测试设备')
+  await expect(page.locator('main h1')).toHaveAttribute('data-preserved', 'true')
+  await page.keyboard.press('Escape')
+  await expect(page).toHaveURL(/\/devices\/device-1$/)
+  await expect(trigger).toBeFocused()
+  expect(await page.evaluate(() => scrollY)).toBe(scroll)
+  await page.goto('/devices/device-1/groups/group-1/edit')
+  await expect(editor).toBeVisible()
+  await expect(page.locator('main h1')).toHaveText('测试设备')
+  await expect(page.locator('details, summary')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('main')).toBeFocused()
+})
+
+test('group deletion confirms its impact and restores focus when its trigger disappears', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  let deleted = false
+  await page.route('**/api/v1/groups/group-1', async (route) => {
+    deleted = true
+    await route.fulfill({ status: 204 })
+  })
+  await page.route('**/api/v1/groups', (route) => route.fulfill({ json: { items: deleted ? [] : [group] } }))
+  await page.goto('/groups')
+  await page.getByRole('link', { name: '编辑默认分组' }).click()
+  await page.getByRole('dialog', { name: '编辑 默认分组' }).getByRole('button', { name: '删除分组' }).click()
+  const confirmation = page.getByRole('dialog', { name: '删除分组「默认分组」？' })
+  await expectDialogCentered(confirmation)
+  await expect(confirmation).toContainText('会被移除')
+  await confirmation.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page).toHaveURL(/\/groups$/)
+  await expect(page.locator('dialog[open]')).toHaveCount(0)
+  await expect(page.getByRole('main')).toBeFocused()
+})
+
+test('group saving closes the editor and refreshes the preserved list', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  let saved = group
+  await page.route('**/api/v1/groups', async (route) => {
+    if (route.request().method() === 'POST') {
+      saved = { ...group, ...route.request().postDataJSON() }
+      await route.fulfill({ json: saved })
+    } else await route.fulfill({ json: { items: [saved] } })
+  })
+  await page.goto('/groups')
+  await page.getByRole('link', { name: '新建分组' }).click()
+  const editor = page.getByRole('dialog', { name: '新建分组', exact: true })
+  await editor.getByLabel('名称', { exact: true }).fill('新分组')
+  await editor.getByLabel('selector tag').fill('new-group')
+  await editor.getByRole('button', { name: '创建分组' }).click()
+  await expect(page).toHaveURL(/\/groups$/)
+  await expect(page.locator('dialog[open]')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '新分组', exact: true })).toBeVisible()
+})
+
+test('event filters use a modal and preserve selected URL filters when reopened', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.goto('/events')
+  await page.getByRole('button', { name: '筛选事件', exact: true }).click()
+  const filters = page.getByRole('dialog', { name: '筛选事件' })
+  await expectDialogCentered(filters)
+  await filters.getByLabel('设备', { exact: true }).selectOption(device.id)
+  await filters.getByLabel('类型', { exact: true }).selectOption('fault')
+  await filters.getByRole('button', { name: '完成' }).click()
+  await expect(page.getByRole('button', { name: '筛选已启用' })).toBeFocused()
+  await expect(page).toHaveURL(/device=device-1&type=fault/)
+  await page.getByRole('button', { name: '筛选已启用' }).click()
+  await expect(filters.getByLabel('设备', { exact: true })).toHaveValue(device.id)
+  await filters.getByRole('button', { name: '清除筛选' }).click()
+  await expect(filters.getByLabel('设备', { exact: true })).toHaveValue('')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('details, summary')).toHaveCount(0)
+})
+
+test('nested rule creation remains accessible inside the group modal at 320px', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.setViewportSize({ width: 320, height: 780 })
+  await page.goto('/groups/group-1')
+  const editor = page.getByRole('dialog', { name: '编辑 默认分组' })
+  await editor.getByRole('tab', { name: '规则', exact: true }).click()
+  await editor.getByRole('button', { name: '添加规则' }).click()
+  const item = page.getByRole('menuitem', { name: /^TCP/ })
+  await expect(item).toBeInViewport()
+  await item.click()
+  const rule = page.getByRole('dialog', { name: /^添加 TCP.*规则$/ })
+  await expectDialogCentered(rule)
+  await expect(rule.getByRole('button', { name: '添加规则', exact: true })).toBeInViewport()
+  await page.keyboard.press('Escape')
+  await expect(editor.getByRole('button', { name: '添加规则' })).toBeFocused()
+  await expect(page.locator('details, summary')).toHaveCount(0)
+})
+
+test('device install options use a nested modal and restore focus to enrollment', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.route('**/api/v1/devices/enroll', (route) => route.fulfill({ json: {
+    id: 'test-enroll', token: 'fake-ui-regression-token', expiresAt: new Date(Date.now() + 1800000).toISOString(),
+  } }))
+  await page.route('**/api/v1/devices/enroll/test-enroll', (route) => route.fulfill({ json: { state: 'pending' } }))
+  await page.setViewportSize({ width: 320, height: 780 })
+  await page.goto('/devices')
+  await page.getByRole('button', { name: '接入新设备' }).click()
+  const enroll = page.getByRole('dialog', { name: '接入新设备' })
+  await expectDialogCentered(enroll)
+  await enroll.getByRole('button', { name: '安装选项与日志' }).click()
+  const options = page.getByRole('dialog', { name: '安装选项与日志' })
+  await expectDialogCentered(options)
+  await page.keyboard.press('Escape')
+  await expect(enroll.getByRole('button', { name: '安装选项与日志' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: '接入新设备' })).toBeFocused()
+  await expect(page.locator('details, summary')).toHaveCount(0)
+})
+
+test('target creation and editing preserve the target list behind a centered modal', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.goto('/targets')
+  await page.getByRole('button', { name: '添加目标' }).click()
+  await page.getByRole('menuitem', { name: /^TCP/ }).click()
+  const create = page.getByRole('dialog', { name: /^添加 TCP.*目标$/ })
+  await expectDialogCentered(create)
+  await expect(page.locator('main h1')).toHaveText('探测目标')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: '添加目标' })).toBeFocused()
+  const trigger = page.getByRole('button', { name: '编辑 测试服务' })
+  await trigger.click()
+  await expectDialogCentered(page.getByRole('dialog', { name: '编辑「测试服务」' }))
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+})
+
+test('device config is fetched only when its preview modal is opened', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  let previews = 0
+  await page.route('**/api/v1/config/preview', async (route) => {
+    previews++
+    await route.fulfill({ json: { config: {}, warnings: [] } })
+  })
+  await page.goto('/devices/device-1')
+  const trigger = page.getByRole('button', { name: '查看配置', exact: true })
+  await expect(trigger).toBeVisible()
+  expect(previews).toBe(0)
+  await trigger.click()
+  const preview = page.getByRole('dialog', { name: '测试设备 的 sing-box 配置' })
+  await expectDialogCentered(preview)
+  await expect.poll(() => previews).toBe(1)
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+})
+
 for (const width of [320, 1280]) {
   for (const theme of ['light', 'dark']) {
-    test(`populated pages and disclosures render in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+    test(`populated pages and modal sections render in ${theme} at ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 })
       await installApiMocks(page, { populated: true })
       await page.addInitScript((value) => localStorage.setItem('singweb.theme', value), theme)
@@ -410,8 +600,7 @@ for (const width of [320, 1280]) {
       for (const path of ['/', '/devices', '/devices/device-1', '/groups', '/groups/group-1', '/targets', '/nodes', '/matrix', '/events']) {
         await page.goto(path)
         await expect(page.locator('h1').first()).toBeVisible()
-        // Visual QA opens all levels. Dedicated tests above cover user-driven activation.
-        await page.locator('main details').evaluateAll((details) => details.forEach((detail) => { (detail as HTMLDetailsElement).open = true }))
+        await expect(page.locator('details, summary')).toHaveCount(0)
         await page.evaluate(() => document.fonts.ready)
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
         if (path === '/groups') {
@@ -423,6 +612,19 @@ for (const width of [320, 1280]) {
         }
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { message: path }).toBeLessThanOrEqual(0)
         await page.screenshot({ path: testInfo.outputPath(`${path === '/' ? 'overview' : path === '/groups/group-1' ? 'editor' : path.slice(1).replaceAll('/', '-')}.png`), fullPage: true })
+        if (path === '/groups/group-1') {
+          const editor = page.getByRole('dialog', { name: '编辑 默认分组' })
+          await expectDialogCentered(editor)
+          for (const name of ['流量', '节点', '规则', '切换', '预览']) {
+            await editor.getByRole('tab', { name, exact: true }).click()
+            if (name === '切换') await editor.locator('#all-fail').scrollIntoViewIfNeeded()
+            await expect(editor.getByRole('tab', { name, exact: true })).toBeInViewport()
+            await expect(editor.getByRole('button', { name: '保存修改' })).toBeInViewport()
+            expect(await editor.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0)
+            await expectDialogCentered(editor)
+            await page.screenshot({ path: testInfo.outputPath(`editor-${name}.png`) })
+          }
+        }
       }
       expect(errors).toEqual([])
     })

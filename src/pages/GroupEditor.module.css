@@ -1,12 +1,16 @@
-/* 表单与按需展开的预览保持单列 */
-.layout {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
-  align-items: stretch;
+/* 模态框内的分区表单保持单列 */
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-bottom: var(--sp-2);
+  background: var(--panel);
 }
 
-.aside { width: 100%; }
+@media (max-width: 480px) {
+  .tabs [role='tablist'] { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .tabs [role='tab'] { justify-content: center; min-width: 0; padding-inline: 2px; }
+}
 
 .body {
   display: flex;
@@ -167,21 +171,6 @@
   min-width: 0;
 }
 
-/* 保存栏：跟着页面滚动停在窗口底部 */
-
-.footer {
-  position: sticky;
-  bottom: var(--sp-3);
-  z-index: 10;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2) var(--sp-3);
-  padding: var(--sp-3) 0;
-  border-top: 1px solid var(--line-strong);
-  background: var(--ground);
-}
-
 .footerStatus {
   flex: 1 1 200px;
   min-width: 0;
@@ -208,17 +197,6 @@
   height: 16px;
   margin-top: 1px;
   color: var(--crit);
-}
-
-.danger {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.danger p {
-  flex: none;
-  max-width: 64ch;
-  color: var(--ink-2);
 }
 
 /* 配置预览 */

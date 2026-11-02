@@ -7,7 +7,12 @@ export function useFocusMainOnNavigate() {
   const last = useRef(pathname)
   useEffect(() => {
     if (last.current === pathname) return
+    const previous = last.current
     last.current = pathname
+    if (document.querySelector('dialog[open]')) return
+    // 关闭路由模态框时，由原生 dialog 把焦点还给保留在背景中的触发点。
+    const background = previous.startsWith('/groups/') ? '/groups' : previous.match(/^(\/devices\/[^/]+)\/groups\/[^/]+\/edit$/)?.[1]
+    if (background === pathname) return
     document.getElementById('main')?.focus({ preventScroll: true })
   }, [pathname])
 }

@@ -18,7 +18,6 @@ import { useDeleteTarget, useProbeCells, useSaveTarget } from '../api/hooks'
 import type { ProbeCell, Target, TargetKind } from '../api/types'
 import { ToneIcon } from '../components/Badge'
 import { Button } from '../components/Button'
-import { revealElement } from '../components/Disclosure'
 import { RecordRow } from '../components/RecordRow'
 import { ConfirmDialog, Dialog } from '../components/Dialog'
 import { Menu } from '../components/Menu'
@@ -66,7 +65,6 @@ export default function Targets() {
     if (!d || deleting || catalog.data?.target.has(d.id)) return
     deleted.current = null
     const next = d.next ? document.querySelector<HTMLElement>(`[data-edit="${CSS.escape(d.next)}"]`) : null
-    revealElement(next)
     ;(next ?? document.getElementById('main'))?.focus()
   }, [deleting, catalog.data])
 

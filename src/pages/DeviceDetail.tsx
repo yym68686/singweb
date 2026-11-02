@@ -1,6 +1,6 @@
-import { useId } from 'react'
-import { Link, useParams } from 'react-router'
-import { ChevronDown, CircleMinus, ClockFading, Laptop, Pencil, Pin, Radar, RotateCw, Split } from 'lucide-react'
+import { useId, useState } from 'react'
+import { Link, Outlet, useParams } from 'react-router'
+import { CircleMinus, ClockFading, Laptop, Pencil, Pin, Radar, RotateCw, Split } from 'lucide-react'
 import { groupsOf, outletName, useCatalog, type Catalog } from '../api/catalog'
 import { errorMessage } from '../api/errors'
 import { useConfigPreview, useEvents, useNow, useProbeCells, useProbeNow, useRetryPending, useRuntimes, useSetPin } from '../api/hooks'
@@ -9,6 +9,7 @@ import { Badge, HealthBadge, RuntimeBadge } from '../components/Badge'
 import { Button, ButtonLink } from '../components/Button'
 import { CodeBlock } from '../components/CodeBlock'
 import { TableScroll } from '../components/DataTable'
+import { Dialog } from '../components/Dialog'
 import { EventList } from '../components/EventList'
 import { Select } from '../components/Form'
 import { Notice } from '../components/Notice'
@@ -39,6 +40,7 @@ export default function DeviceDetail() {
   const data = catalog.data && runtimes.data ? { c: catalog.data, rts: runtimes.data } : undefined
 
   return (
+    <>
     <Loadable
       data={data}
       error={catalog.error ?? runtimes.error}
@@ -64,6 +66,8 @@ export default function DeviceDetail() {
         return <DeviceBody d={d} c={c} rts={rts} now={now} />
       }}
     </Loadable>
+    <Outlet />
+    </>
   )
 }
 
@@ -178,7 +182,7 @@ function GroupPanel({ d, g, rt, c, now }: Omit<PanelProps, 'rt'> & { rt?: GroupR
       title={g.name}
       summary={rt ? <RuntimeBadge state={rt.state} /> : '等待 Agent 上报'}
       actions={
-        <ButtonLink to={`/groups/${g.id}`} size="sm" variant="ghost" icon={Pencil}>
+        <ButtonLink to={`/devices/${d.id}/groups/${g.id}/edit`} preventScrollReset size="sm" variant="ghost" icon={Pencil}>
           编辑分组
         </ButtonLink>
       }
@@ -543,26 +547,29 @@ function CandidateTable({ g, rt, c }: Omit<PanelProps, 'd'>) {
  * 前端拼不出来。密钥位置是占位符——真正的 Clash API 密钥由 Agent 在本机生成。
  */
 function Snippet({ d }: { d: Device }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Section id="snippet" title="sing-box 配置">
+      <Button onClick={() => setOpen(true)}>查看配置</Button>
+      <Dialog open={open} onClose={() => setOpen(false)} title={`${d.name} 的 sing-box 配置`} wide>
+        <ConfigPreview d={d} />
+      </Dialog>
+    </Section>
+  )
+}
+
+function ConfigPreview({ d }: { d: Device }) {
   const preview = useConfigPreview({ deviceId: d.id })
   const built = preview.data
   return (
-    <Section
-      id="snippet"
-      title="sing-box 配置"
-    >
       <div className={page.stackSm}>
         {built && built.warnings.length > 0 && (
           <Notice tone="warn" title={built.warnings.length === 1 ? '有一处没有生成' : '有几处没有生成'}>
             {built.warnings.join('')}
           </Notice>
         )}
-        <details className={s.details}>
-          <summary>
-            <ChevronDown aria-hidden />
-            查看完整配置
-          </summary>
           {preview.isPending ? (
-            <p className={s.previewNote}>正在生成配置…</p>
+            <LoadingState />
           ) : preview.isError ? (
             <Notice tone="crit" title="生成配置失败">
               {errorMessage(preview.error)}
@@ -575,9 +582,7 @@ function Snippet({ d }: { d: Device }) {
               maxHeight={480}
             />
           ) : null}
-        </details>
       </div>
-    </Section>
   )
 }
 

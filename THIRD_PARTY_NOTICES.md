@@ -6,9 +6,11 @@ Pinned revision: `44a274e598395ab61e7c96c26fda2758780253b7`
 
 Vendored files: `src/vendor/beautiful-ui/foundation.css` (official registry foundation), `Button.tsx`, `SegmentedControl.tsx`, `SearchField.tsx` (extracted from `SearchList.tsx`), `FilterChips.tsx` (extracted from `FilterTable.tsx`).
 
-Adapters: use the existing data-theme attribute and class-name helper; preserve the local Button API through the upstream buttonVariants. SegmentedControl accepts translated labels and uses native radios. SearchField extracts the working search input and clear action without demo results. Application layout, concise page copy and accessible native disclosure controls live outside the vendored styles. Demo motion, thinking indicators, card primitives and paid icons are not imported.
+Adapters: use the existing data-theme attribute and class-name helper; preserve the local Button API through the upstream buttonVariants. SegmentedControl accepts translated labels and uses native radios. SearchField extracts the working search input and clear action without demo results. Application layout, concise page copy and accessible native modal dialogs live outside the vendored styles. Demo motion, thinking indicators, card primitives and paid icons are not imported.
 
 FilterChips accepts real record counts and translated labels, uses aria-pressed, and wraps at narrow widths. Records Table and Filter Table inform the application's compact semantic tables, quiet row hover and explicit detail actions; demo AI calculations and editable property controls are omitted. The upstream loading-state demo is intentionally not included or used; application loading uses a compact content skeleton.
+
+FilterChips also adapts the same upstream selection styling for form section tabs, with tab/panel relationships, roving focus and Arrow/Home/End keyboard navigation. Group editing uses these tabs inside a native modal over the originating list or device detail. Sidebar Nav informs the compact, always-visible navigation groups; its demo search, collapse and motion are omitted.
 
 Application controls adapt the upstream pill treatment to one shared 6px corner token. FilterChips uses a quiet selected fill without an outline or nested count badge; SegmentedControl uses inset corners, and SearchField uses a filled input without an extra separator. The shared Button adapter overrides upstream pill radii without changing button behavior or variants.
 

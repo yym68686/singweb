@@ -36,12 +36,15 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Overview /> },
           { path: 'devices', element: <Devices /> },
-          { path: 'devices/:id', element: <DeviceDetail /> },
+          { path: 'devices/:id', element: <DeviceDetail />, children: [
+            { path: 'groups/:groupId/edit', element: <GroupEditor /> },
+          ] },
           { path: 'matrix', element: <Matrix /> },
           { path: 'events', element: <Events /> },
-          { path: 'groups', element: <Groups /> },
-          { path: 'groups/new', element: <GroupEditor /> },
-          { path: 'groups/:id', element: <GroupEditor /> },
+          { path: 'groups', element: <Groups />, children: [
+            { path: 'new', element: <GroupEditor /> },
+            { path: ':id', element: <GroupEditor /> },
+          ] },
           { path: 'targets', element: <Targets /> },
           { path: 'nodes', element: <Nodes /> },
           { path: '*', element: <NotFound /> },
