@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 const routes = [
   '/',
@@ -13,6 +13,22 @@ const routes = [
   '/nodes',
   '/not-found',
 ]
+
+async function expectDialogCentered(dialog: Locator) {
+  // Wait for the short entrance translation before measuring the final position.
+  await expect.poll(() => dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return Math.max(Math.abs(rect.x + rect.width / 2 - innerWidth / 2), Math.abs(rect.y + rect.height / 2 - innerHeight / 2))
+  })).toBeLessThanOrEqual(1)
+  const bounds = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: innerWidth, height: innerHeight }
+  })
+  expect(bounds.left).toBeGreaterThanOrEqual(16)
+  expect(bounds.top).toBeGreaterThanOrEqual(23)
+  expect(bounds.right).toBeLessThanOrEqual(bounds.width - 16)
+  expect(bounds.bottom).toBeLessThanOrEqual(bounds.height - 23)
+}
 
 async function installApiMocks(page: Page, options: { populated?: boolean; failNodes?: boolean } = {}) {
   await page.addInitScript(() => {
@@ -188,10 +204,12 @@ test('live outlet details disclose one level at a time on overview and device ro
   await page.goto('/')
   await expect(page.getByText('当前出口：东京节点')).toHaveCount(0)
   await page.getByRole('button', { name: '查看 测试设备 默认分组 出口' }).click()
+  await expectDialogCentered(page.getByRole('dialog', { name: '测试设备 · 默认分组' }))
   await expect(page.getByText('当前出口：东京节点')).toBeVisible()
   await page.getByText('候选节点与探测详情').click()
   const candidateDialog = page.getByRole('dialog', { name: '默认分组 · 候选节点' })
   await expect(candidateDialog).toBeVisible()
+  await expectDialogCentered(candidateDialog)
   const nodeRow = candidateDialog.getByText('东京节点').first()
   await expect(nodeRow).toBeVisible()
   await candidateDialog.getByRole('button', { name: '详情' }).click()
@@ -265,6 +283,7 @@ test('node records keep details out of the list and open them in a focused dialo
   const dialog = page.getByRole('dialog', { name: '东京节点' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('proxy.example.com:443')).toBeVisible()
+  await expectDialogCentered(dialog)
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   await expect(list.getByRole('button', { name: '详情' })).toBeFocused()
@@ -338,6 +357,23 @@ for (const theme of ['light', 'dark']) {
     const dialog = page.getByRole('dialog', { name: '导入节点' })
     await expect(dialog).toHaveCSS('border-radius', '6px')
     await expect(dialog.getByLabel('名称')).toHaveCSS('border-radius', '6px')
+    await expectDialogCentered(dialog)
+    await page.setViewportSize({ width: 320, height: 780 })
+    await expectDialogCentered(dialog)
+    await page.setViewportSize({ width: 1280, height: 300 })
+    await expectDialogCentered(dialog)
+    const footer = dialog.getByRole('button', { name: '添加订阅' })
+    await footer.scrollIntoViewIfNeeded()
+    await expect(footer).toBeInViewport()
+    await page.screenshot({ path: testInfo.outputPath(`centered-dialog-${theme}.png`) })
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('button', { name: '导入节点' })).toBeFocused()
+    await page.getByRole('button', { name: '重置链接' }).click()
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0)
+    const confirmation = page.getByRole('dialog', { name: '重置订阅链接？' })
+    await expectDialogCentered(confirmation)
+    await confirmation.getByRole('button', { name: '取消' }).click()
+    await expect(page.getByRole('button', { name: '重置链接' })).toBeFocused()
   })
 }
 
