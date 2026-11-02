@@ -1,13 +1,14 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { CircleCheck, ClockFading, Laptop, OctagonAlert, TriangleAlert, WifiOff } from 'lucide-react'
 import { groupsOf, outletName, useCatalog, type Catalog } from '../api/catalog'
 import { useEvents, useNow, useRuntimes } from '../api/hooks'
 import type { Device, GroupRuntime } from '../api/types'
 import { Badge, RuntimeBadge, ToneIcon } from '../components/Badge'
-import { ButtonLink } from '../components/Button'
+import { Button, ButtonLink } from '../components/Button'
 import { EventList } from '../components/EventList'
-import { Disclosure } from '../components/Disclosure'
+import { Dialog } from '../components/Dialog'
+import { RecordRow } from '../components/RecordRow'
 import { Section } from '../components/PageHeader'
 import { RouteStrip } from '../components/RouteStrip'
 import { EmptyState, ErrorState, Loadable, LoadingState } from '../components/States'
@@ -205,8 +206,11 @@ function Outlets({ c, rts, now }: Props) {
 }
 
 function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
+  const [detailGroup, setDetailGroup] = useState<string | null>(null)
   const groups = groupsOf(c, d.id)
   const mine = rts.filter((r) => r.deviceId === d.id)
+  const selected = groups.find((g) => g.id === detailGroup)
+  const selectedRuntime = mine.find((r) => r.groupId === detailGroup)
   const lastRound = mine
     .map((r) => r.lastRoundAt)
     .filter((t): t is string => !!t)
@@ -214,41 +218,24 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
     .at(-1)
 
   return (
-    <Disclosure title={d.name} meta={<>{d.online && d.singboxError ? 'sing-box 故障' : d.online ? '在线' : `离线 · ${timeAgo(d.lastSeenAt, now)}`}<span>{groups.length} 个分组</span></>} headingLevel={3}>
-      <header className={page.panelHead}>
-        <div className={page.panelTitle}>
-          <span className={cx('mono', page.sub)}>{d.hostname}</span>
-        </div>
-        <Link to={`/devices/${d.id}`}>设备详情</Link>
-        {d.online ? (
-          lastRound && (
-            <span className={page.sub}>
-              上一轮探测：<time dateTime={lastRound}>{timeAgo(lastRound, now)}</time>
-            </span>
-          )
-        ) : (
-          <Badge tone="offline" icon={WifiOff}>
-            {timeAgo(d.lastSeenAt, now)}离线
-          </Badge>
-        )}
-      </header>
+    <section className={s.device} aria-label={d.name}>
+      <RecordRow icon={Laptop}
+        title={<Link to={`/devices/${d.id}`}>{d.name}</Link>}
+        description={d.online && lastRound ? <>上次探测 <time dateTime={lastRound}>{timeAgo(lastRound, now)}</time></> : d.hostname}
+        status={<Badge tone={d.online && d.singboxError ? 'crit' : d.online ? 'good' : 'offline'}>{d.online && d.singboxError ? 'sing-box 故障' : d.online ? '在线' : `离线 · ${timeAgo(d.lastSeenAt, now)}`}</Badge>}
+        actions={<ButtonLink size="sm" variant="ghost" to={`/devices/${d.id}`}>设备详情</ButtonLink>}
+      />
       {groups.length ? (
         <ul className={s.routes}>
           {groups.map((g) => {
             const rt = mine.find((r) => r.groupId === g.id)
             return (
               <li key={g.id}>
-                <Disclosure title={g.name} headingLevel={4} className={s.route} meta={<>{rt && <span className={s.outletName}>{keepNames(outletName(rt.activeNodeId, c))}</span>}{rt ? <RuntimeBadge state={rt.state} /> : '待上报'}</>}>
-                  {rt ? (
-                  <RouteStrip
-                    runtime={rt}
-                    group={g}
-                    nodes={c.node}
-                    targets={c.target}
-                    label={`${d.name}「${g.name}」的当前出口`}
-                  />
-                  ) : <p className={page.sub}>Agent 还没有上报这个分组的状态。</p>}
-                </Disclosure>
+                <RecordRow title={g.name}
+                  description={rt ? <span className={s.outletName}>{keepNames(outletName(rt.activeNodeId, c))}</span> : '等待 Agent 上报'}
+                  status={rt && <RuntimeBadge state={rt.state} />}
+                  actions={<Button size="sm" variant="ghost" aria-label={`查看 ${d.name} ${g.name} 出口`} onClick={() => setDetailGroup(g.id)}>查看出口</Button>}
+                />
               </li>
             )
           })}
@@ -258,7 +245,10 @@ function DevicePanel({ d, c, rts, now }: Props & { d: Device }) {
           未应用分组 · <Link to="/groups">去分组设置</Link>
         </p>
       )}
-    </Disclosure>
+      {selected && <Dialog open onClose={() => setDetailGroup(null)} title={`${d.name} · ${selected.name}`} wide>
+        {selectedRuntime ? <RouteStrip runtime={selectedRuntime} group={selected} nodes={c.node} targets={c.target} label={`${d.name}「${selected.name}」的当前出口`} /> : <p className={page.sub}>Agent 还没有上报这个分组的状态。</p>}
+      </Dialog>}
+    </section>
   )
 }
 

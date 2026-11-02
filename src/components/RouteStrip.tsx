@@ -1,10 +1,13 @@
+import { useState, type ReactNode } from 'react'
+import { Button } from './Button'
+import { Dialog } from './Dialog'
+import { RecordRow } from './RecordRow'
 import { Pin } from 'lucide-react'
 import { DIRECT, type Group, type GroupRuntime, type NodeHealth, type ProxyNode, type Target } from '../api/types'
 import { candidateIds } from '../lib/candidates'
 import { joinZh, ms } from '../lib/format'
 import { keepNames } from '../lib/keepNames'
 import { healthLabel, protocolLabel, selectionLabel, strategyLabel } from '../lib/labels'
-import { Disclosure } from './Disclosure'
 import { Notice } from './Notice'
 import s from './RouteStrip.module.css'
 
@@ -56,6 +59,8 @@ function portsOf(runtime: GroupRuntime, group: Group, nodes: Map<string, ProxyNo
 
 /** 当前出口先给出结论，候选节点及探测详情逐层展开。 */
 export function RouteStrip({ runtime, group, nodes, targets, label, candidateDetails }: RouteStripProps) {
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<Port | null>(null)
   const ports = portsOf(runtime, group, nodes)
   const active = ports.find((port) => port.id === runtime.activeNodeId)
   const blocked = runtime.activeNodeId === null
@@ -72,22 +77,29 @@ export function RouteStrip({ runtime, group, nodes, targets, label, candidateDet
       {runtime.state === 'stale' && <Notice tone="offline" title="设备离线，以上为最后上报的状态" />}
       {active?.kind === 'down' && <Notice tone="crit" title="当前出口不可用" />}
       {runtime.activeNodeId === DIRECT && <Notice tone="warn" title="正在直连">对方会看到设备的真实出口 IP。</Notice>}
-      <Disclosure title="候选节点与探测详情" meta={`${ports.length} 个`}>
-        {candidateDetails ?? (ports.length ? (
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)} aria-haspopup="dialog">
+        候选节点与探测详情 <span className={s.count}>{ports.length}</span>
+      </Button>
+      <Dialog open={open} onClose={() => { setOpen(false); setSelected(null) }} title={selected ? `${group.name} · ${selected.label}` : `${group.name} · 候选节点`} wide>
+        {selected ? (
+          <div className={s.detailView}>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>返回候选节点</Button>
+            <PortDetail port={selected} group={group} targets={targets} />
+          </div>
+        ) : candidateDetails ?? (ports.length ? (
           <ol className={s.nodes}>
             {ports.map((port) => (
               <li key={port.id}>
-                <Disclosure
+                <RecordRow
                   title={port.label}
-                  meta={<><span>{port.id === runtime.activeNodeId ? '当前出口 · ' : ''}{port.sub}</span>{port.id === runtime.pinnedNodeId && <span>已固定</span>}</>}
-                >
-                  <PortDetail port={port} group={group} targets={targets} />
-                </Disclosure>
+                  description={<>{port.id === runtime.activeNodeId ? '当前出口 · ' : ''}{port.sub}{port.id === runtime.pinnedNodeId ? ' · 已固定' : ''}</>}
+                  actions={<Button size="sm" variant="ghost" onClick={() => setSelected(port)}>详情</Button>}
+                />
               </li>
             ))}
           </ol>
         ) : <p className={s.meta}>暂无候选节点状态</p>)}
-      </Disclosure>
+      </Dialog>
     </div>
   )
 }
@@ -114,4 +126,3 @@ function PortDetail({ port, group, targets }: { port: Port; group: Group; target
     </div>
   )
 }
-import type { ReactNode } from 'react'

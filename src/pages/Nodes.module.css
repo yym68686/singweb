@@ -202,13 +202,7 @@
   flex-direction: column;
   gap: var(--sp-3);
 }
-.filter { border-block: 1px solid var(--line); }
-.filter summary { display: flex; align-items: center; justify-content: space-between; min-height: 36px; cursor: pointer; list-style: none; font-size: var(--fs-13); font-weight: 600; }
-.filter summary::-webkit-details-marker { display: none; }
-.filter summary::after { content: '+'; color: var(--ink-2); font-size: 18px; font-weight: 400; }
-.filter[open] summary::after { content: '−'; }
-.filterCount { margin-left: auto; margin-right: 10px; color: var(--accent-ink); font-weight: 500; }
-.filter > :not(summary) { margin-bottom: 8px; }
+.filter { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 8px; border-block: 1px solid var(--line); }
 .nodes { display: flex; flex-direction: column; border-block: 1px solid var(--line-strong); }
 .nodeRow { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1fr) auto auto; align-items: center; gap: var(--sp-3); min-width: 0; padding: 12px 0; border-top: 1px solid var(--line); }
 .nodeRow:first-child { border-top: 0; }

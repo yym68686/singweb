@@ -47,6 +47,7 @@ import { keepNames } from '../lib/keepNames'
 import { allFailLabel, protocolLabel } from '../lib/labels'
 import type { Tone } from '../lib/status'
 import { SearchField } from '../vendor/beautiful-ui/SearchField'
+import { FilterChips } from '../vendor/beautiful-ui/FilterChips'
 import t from '../components/DataTable.module.css'
 import page from '../styles/page.module.css'
 import s from './Nodes.module.css'
@@ -601,6 +602,7 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
   const [confirm, setConfirm] = useState<ProxyNode | null>(null)
   const [details, setDetails] = useState<ProxyNode | null>(null)
   const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
 
   const usage = usageOf(c)
 
@@ -625,7 +627,11 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
   const enabled = c.nodes.filter((n) => n.enabled).length
   const inUse = new Set(rts.map((r) => r.activeNodeId).filter((id) => id !== null)).size
   const term = query.trim().toLocaleLowerCase()
-  const nodes = term ? c.nodes.filter((n) => [n.tag, n.region, n.protocol, n.server, n.source].some((v) => v.toLocaleLowerCase().includes(term))) : c.nodes
+  const nodes = c.nodes.filter((n) => {
+    const matchesStatus = statusFilter === 'all' || (statusFilter === 'enabled' ? n.enabled : !n.enabled)
+    const matchesSearch = !term || [n.tag, n.region, n.protocol, n.server, n.source].some((v) => v.toLocaleLowerCase().includes(term))
+    return matchesStatus && matchesSearch
+  })
 
   return (
     <div className={page.stackSm}>
@@ -633,10 +639,19 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
         <h2 className={page.panelTitle}>节点池</h2>
         <span className={page.sub}>{enabled} 启用 · {inUse} 在用</span>
       </header>
-      <details className={s.filter}>
-        <summary><span>筛选节点</span>{term && <span className={s.filterCount}>{nodes.length} / {c.nodes.length}</span>}</summary>
+      <div className={s.filter}>
         <SearchField value={query} onChange={setQuery} label="搜索名称、地区或地址" />
-      </details>
+        <FilterChips
+          label="节点状态"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: 'all', label: '全部', count: c.nodes.length },
+            { value: 'enabled', label: '已启用', count: enabled },
+            { value: 'disabled', label: '已停用', count: c.nodes.length - enabled },
+          ]}
+        />
+      </div>
       <ul className={s.nodes} aria-label="代理节点列表">
         {nodes.map((n) => (
           <li key={n.id} className={s.nodeRow}>
@@ -668,7 +683,7 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
           onConfirm={() => apply(confirm, false)}
         />
       )}
-      {details && <NodeDialog n={details} c={c} rts={rts} usage={usage.get(details.id)} onClose={() => setDetails(null)} onToggle={(enabled) => toggle(details, enabled)} pending={update.isPending && update.variables?.id === details.id} />}
+      {details && <NodeDialog n={c.node.get(details.id) ?? details} c={c} rts={rts} usage={usage.get(details.id)} onClose={() => setDetails(null)} onToggle={(enabled) => toggle(details, enabled)} pending={update.isPending && update.variables?.id === details.id} />}
     </div>
   )
 }

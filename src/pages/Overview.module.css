@@ -92,6 +92,11 @@
   min-width: 0;
 }
 
+.device { padding-bottom: 8px; }
+.device + .device { margin-top: 12px; }
+.routes { padding-left: 48px; }
+@media (max-width: 480px) { .routes { padding-left: 12px; } }
+
 .events {
   min-width: 0;
 }

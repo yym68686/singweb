@@ -1,0 +1,13 @@
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.icon { display: grid; place-items: center; width: 36px; height: 36px; flex: none; background: var(--inset); color: var(--ink-2); border: 1px solid var(--line); border-radius: 10px; }
+.identity { flex: 1 1 160px; min-width: 0; }
+.title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
+.title a { color: var(--ink); }
+.description { margin-top: 4px; color: var(--ink-2); font-size: 13px; overflow-wrap: anywhere; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+@media (max-width: 480px) {
+  .row { gap: 8px; }
+  .identity { flex-basis: calc(100% - 52px); }
+  .status { flex: 1 1 120px; }
+}

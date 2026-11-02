@@ -67,6 +67,7 @@ export function Section({ title, summary, description, actions, children, classN
           <h2 id={id ? `${id}-title` : undefined} className={s.sectionTitle}>
             {title}
           </h2>
+          {summary && <div className={s.meta}>{summary}</div>}
         </div>
         {actions && <div className={s.actions}>{actions}</div>}
       </div>

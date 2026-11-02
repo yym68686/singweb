@@ -18,7 +18,8 @@ import { useDeleteTarget, useProbeCells, useSaveTarget } from '../api/hooks'
 import type { ProbeCell, Target, TargetKind } from '../api/types'
 import { ToneIcon } from '../components/Badge'
 import { Button } from '../components/Button'
-import { Disclosure, revealElement } from '../components/Disclosure'
+import { revealElement } from '../components/Disclosure'
+import { RecordRow } from '../components/RecordRow'
 import { ConfirmDialog, Dialog } from '../components/Dialog'
 import { Menu } from '../components/Menu'
 import { Notice } from '../components/Notice'
@@ -131,35 +132,44 @@ interface TableProps {
 }
 
 function TargetTable({ c, cells, onEdit, onDelete }: TableProps) {
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const detail = c.target.get(detailId ?? '')
   return (
+    <>
     <ul className={s.targets} aria-label="探测目标列表">
       {c.targets.map((tg) => {
-        const users = usersOf(c, tg.id)
         const KindIcon = targetKindIcon[tg.kind]
         return (
           <li key={tg.id}>
-            <Disclosure title={tg.name} headingLevel={2} meta={<span className={s.kind}><KindIcon aria-hidden />{targetKindLabel[tg.kind]}</span>}>
-              <div className={s.targetDetail}>
-                <p className={cx('mono', s.addr)}>{targetAddress(tg)}</p>
-                {tg.note && <p className={t.sub}>{tg.note}</p>}
-                <p className={s.targetLabel}>通过条件</p>
-                <PassCondition tg={tg} />
-                <p className={s.targetLine}><span className={s.targetLabel}>超时</span>{timeoutText(tg.timeoutMs)}</p>
-                <div>
-                  <p className={s.targetLabel}>正在使用</p>
-                  {users.length ? <ul>{users.map((g) => <li key={g.id}><Link to={`/groups/${g.id}`}>{g.name}</Link></li>)}</ul> : <span className={t.sub}>没有分组使用</span>}
-                </div>
-                <div><p className={s.targetLabel}>最近一轮</p><Recent tg={tg} c={c} cells={cells} /></div>
-                <div className={s.targetLine}>
-                  <Button size="sm" variant="ghost" icon={Pencil} aria-label={`编辑 ${tg.name}`} data-edit={tg.id} onClick={() => onEdit(tg)}>编辑</Button>
-                  <Button size="sm" variant="ghost" icon={Trash} aria-label={`删除 ${tg.name}`} onClick={() => onDelete(tg)}>删除</Button>
-                </div>
-              </div>
-            </Disclosure>
+            <RecordRow
+              icon={KindIcon}
+              title={tg.name}
+              description={<>{targetKindLabel[tg.kind]} · <span className="mono">{targetAddress(tg)}</span></>}
+              status={<Recent tg={tg} c={c} cells={cells} />}
+              actions={<>
+                <Button size="sm" variant="ghost" aria-label={`详情 ${tg.name}`} onClick={() => setDetailId(tg.id)}>详情</Button>
+                <Button size="sm" icon={Pencil} aria-label={`编辑 ${tg.name}`} data-edit={tg.id} onClick={() => onEdit(tg)}>编辑</Button>
+                <Button size="sm" variant="ghost" icon={Trash} aria-label={`删除 ${tg.name}`} onClick={() => onDelete(tg)} />
+              </>}
+            />
           </li>
         )
       })}
     </ul>
+    {detail && <Dialog open onClose={() => setDetailId(null)} title={detail.name}>
+      <div className={s.targetDetail}>
+        <p className={cx('mono', s.addr)}>{targetAddress(detail)}</p>
+        {detail.note && <p className={t.sub}>{detail.note}</p>}
+        <p className={s.targetLabel}>通过条件</p>
+        <PassCondition tg={detail} />
+        <p className={s.targetLine}><span className={s.targetLabel}>超时</span>{timeoutText(detail.timeoutMs)}</p>
+        <div><p className={s.targetLabel}>正在使用</p>
+          {usersOf(c, detail.id).length ? <ul>{usersOf(c, detail.id).map((g) => <li key={g.id}><Link to={`/groups/${g.id}`}>{g.name}</Link></li>)}</ul> : <span className={t.sub}>没有分组使用</span>}
+        </div>
+        <div><p className={s.targetLabel}>最近一轮</p><Recent tg={detail} c={c} cells={cells} /></div>
+      </div>
+    </Dialog>}
+    </>
   )
 }
 

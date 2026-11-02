@@ -8,17 +8,17 @@ import {
   OctagonAlert,
   Plus,
   RotateCw,
-  TriangleAlert,
   Wifi,
   WifiOff,
 } from 'lucide-react'
-import { groupsOf, outletName, useCatalog, type Catalog } from '../api/catalog'
+import { useCatalog, type Catalog } from '../api/catalog'
 import { absoluteApiUrl } from '../api/client'
 import { ApiError, errorMessage } from '../api/errors'
 import { useCreateEnroll, useEnrollStatus, useMe, useNow, useRuntimes } from '../api/hooks'
-import type { Device, GroupRuntime } from '../api/types'
-import { Badge, RuntimeBadge } from '../components/Badge'
-import { Button } from '../components/Button'
+import type { Device } from '../api/types'
+import { Badge } from '../components/Badge'
+import { Button, ButtonLink } from '../components/Button'
+import { RecordRow } from '../components/RecordRow'
 import { CodeBlock } from '../components/CodeBlock'
 import { Disclosure } from '../components/Disclosure'
 import { Dialog } from '../components/Dialog'
@@ -28,8 +28,6 @@ import { EmptyState, Loadable } from '../components/States'
 import { Tooltip } from '../components/Tooltip'
 import { cx } from '../lib/cx'
 import { formatFull, timeAgo } from '../lib/format'
-import { osText, singboxText } from '../lib/labels'
-import { MIN_SINGBOX, singboxTooOld } from '../lib/singbox'
 import t from '../components/DataTable.module.css'
 import s from './Devices.module.css'
 
@@ -63,9 +61,9 @@ export default function Devices() {
           void runtimes.refetch()
         }}
       >
-        {({ c, rts }) =>
+        {({ c }) =>
           c.devices.length ? (
-            <DeviceTable c={c} rts={rts} now={now} />
+            <DeviceTable c={c} now={now} />
           ) : (
             <EmptyState icon={Laptop} title="暂无设备" action={add} />
           )
@@ -75,7 +73,6 @@ export default function Devices() {
     </>
   )
 }
-
 type Os = 'macos' | 'windows'
 
 /** 对话框默认显示哪个系统的命令：多半是在要接入的那台电脑上打开的网页 */
@@ -266,23 +263,20 @@ function Joined({ id, device, onOpen }: { id: string; device: Device | null; onO
   )
 }
 
-function DeviceTable({ c, rts, now }: { c: Catalog; rts: GroupRuntime[]; now: number }) {
+function DeviceTable({ c, now }: { c: Catalog; now: number }) {
   return (
     <ul className={s.devices} aria-label="已接入的设备">
       {c.devices.map((d) => (
         <li key={d.id}>
-          <Disclosure title={d.name} headingLevel={2} meta={<><Badge tone={d.online && d.singboxError ? 'crit' : d.online ? 'good' : 'offline'} icon={d.online ? Wifi : WifiOff}>{d.online && d.singboxError ? 'sing-box 故障' : d.online ? '在线' : '离线'}</Badge><span><time dateTime={d.lastSeenAt} title={formatFull(d.lastSeenAt)}>{timeAgo(d.lastSeenAt, now)}</time> 上报</span></>}>
-            <div className={s.deviceDetails}>
-              <Link to={`/devices/${d.id}`} className={t.name}>查看设备详情</Link>
-              <p className={cx(t.sub, 'mono')}>{d.hostname}</p>
-              {d.note && <p>{d.note}</p>}
-              <h3 className={s.detailHeading}>分组出口</h3>
-              <Outlets d={d} c={c} rts={rts} />
-              <h3 className={s.detailHeading}>系统与版本</h3>
-              <Versions d={d} />
-              {d.online && <LocalProxy d={d} />}
-            </div>
-          </Disclosure>
+          <RecordRow
+            icon={Laptop}
+            title={<Link to={`/devices/${d.id}`}>{d.name}</Link>}
+            description={<><span className="mono">{d.hostname}</span> · <time dateTime={d.lastSeenAt} title={formatFull(d.lastSeenAt)}>{timeAgo(d.lastSeenAt, now)}</time> 上报</>}
+            status={<Badge tone={d.online && d.singboxError ? 'crit' : d.online ? 'good' : 'offline'} icon={d.online ? Wifi : WifiOff}>{d.online && d.singboxError ? 'sing-box 故障' : d.online ? '在线' : '离线'}</Badge>}
+            actions={<ButtonLink to={`/devices/${d.id}`} size="sm">查看设备</ButtonLink>}
+          >
+            {d.online && d.singboxError && <p className={s.down}>{d.singboxError}</p>}
+          </RecordRow>
         </li>
       ))}
     </ul>
@@ -329,45 +323,5 @@ function LocalProxy({ d }: { d: Device }) {
     <div className={t.sub}>
       本机代理 <span className="mono">{d.proxyListen}</span>
     </div>
-  )
-}
-
-function Outlets({ d, c, rts }: { d: Device; c: Catalog; rts: GroupRuntime[] }) {
-  const groups = groupsOf(c, d.id)
-  if (!groups.length) return <span className={t.dim}>没有应用分组</span>
-  return (
-    <ul className={s.outlets}>
-      {groups.map((g) => {
-        const rt = rts.find((r) => r.deviceId === d.id && r.groupId === g.id)
-        return (
-          <li key={g.id} className={s.outlet}>
-            <span className={s.group}>{g.name}</span>
-            <span className={s.node}>{rt && rt.activeNodeId !== null ? outletName(rt.activeNodeId, c) : '—'}</span>
-            {rt && <RuntimeBadge state={rt.state} />}
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-function Versions({ d }: { d: Device }) {
-  const old = singboxTooOld(d.singboxVersion)
-  return (
-    <>
-      <div>{osText(d)}</div>
-      <div className={cx(t.sub, s.versions)}>
-        <span>{singboxText(d.singboxVersion)}</span>
-        {old && (
-          <Tooltip content={`singweb 生成的路由规则需要 sing-box ${MIN_SINGBOX} 或更新的版本。`} focusable>
-            <span className={s.old}>
-              <TriangleAlert aria-hidden />
-              版本过低
-            </span>
-          </Tooltip>
-        )}
-        <span>Agent {d.agentVersion}</span>
-      </div>
-    </>
   )
 }

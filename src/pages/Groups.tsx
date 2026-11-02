@@ -1,12 +1,14 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { Pencil, Plus, Split } from 'lucide-react'
 import { outletName, useCatalog, type Catalog } from '../api/catalog'
 import { useNow, useRuntimes } from '../api/hooks'
 import type { Group, GroupRuntime } from '../api/types'
 import { RuntimeBadge } from '../components/Badge'
-import { ButtonLink } from '../components/Button'
+import { Button, ButtonLink } from '../components/Button'
 import { PageHeader } from '../components/PageHeader'
-import { Disclosure } from '../components/Disclosure'
+import { Dialog } from '../components/Dialog'
+import { RecordRow } from '../components/RecordRow'
 import { EmptyState, Loadable } from '../components/States'
 import { candidateIds } from '../lib/candidates'
 import { cx } from '../lib/cx'
@@ -68,7 +70,7 @@ export default function Groups() {
 }
 
 function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime[]; now: number }) {
-  const titleId = `group-${g.id}-title`
+  const [details, setDetails] = useState(false)
   const auto = g.selection === 'auto'
   const tags = candidateIds(g, c.nodes).map((id) => {
     const n = c.node.get(id)
@@ -77,13 +79,14 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
   const strategy = auto ? `${strategyLabel[g.strategy]}：` : ''
 
   return (
-    <Disclosure
-      title={g.name}
-      meta={<><span>{auto ? strategyLabel[g.strategy] : '手动选择'}</span><span>{tags.length} 节点 · {groupDeviceIds(g, c.devices).length} 设备</span></>}
-      labelledBy={titleId}
-      headingLevel={2}
-      labelClassName={s.title}
-    >
+    <>
+      <RecordRow
+        icon={Split}
+        title={<Link to={`/groups/${g.id}`}>{g.name}</Link>}
+        description={<>{auto ? strategyLabel[g.strategy] : '手动选择'} · {tags.length} 节点 · {groupDeviceIds(g, c.devices).length} 设备</>}
+        actions={<><Button variant="ghost" size="sm" onClick={() => setDetails(true)} aria-label={`详情 ${g.name}`}>详情</Button><ButtonLink to={`/groups/${g.id}`} size="sm" icon={Pencil} aria-label={`编辑${gapBefore(g.name)}${g.name}`}>编辑</ButtonLink></>}
+      />
+      <Dialog open={details} onClose={() => setDetails(false)} title={g.name} wide>
       <header className={page.panelHead}>
         <span className={page.sub}>
           <time dateTime={g.updatedAt} title={formatFull(g.updatedAt)}>{timeAgo(g.updatedAt, now)}</time> 修改
@@ -149,7 +152,8 @@ function GroupCard({ g, c, rts, now }: { g: Group; c: Catalog; rts: GroupRuntime
           <DeviceStatus g={g} c={c} rts={rts} />
         </div>
       </div>
-    </Disclosure>
+      </Dialog>
+    </>
   )
 }
 
