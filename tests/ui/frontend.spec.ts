@@ -255,6 +255,21 @@ test('node search filters records and restores them when cleared', async ({ page
   await expect(list.getByRole('listitem')).toHaveCount(1)
 })
 
+test('node records keep details out of the list and open them in a focused dialog', async ({ page }) => {
+  await installApiMocks(page, { populated: true })
+  await page.goto('/nodes')
+  const list = page.getByRole('list', { name: '代理节点列表' })
+  await expect(list.getByRole('button', { name: '详情' })).toBeVisible()
+  await expect(list.locator('details')).toHaveCount(0)
+  await list.getByRole('button', { name: '详情' }).click()
+  const dialog = page.getByRole('dialog', { name: '东京节点' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('proxy.example.com:443')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(list.getByRole('button', { name: '详情' })).toBeFocused()
+})
+
 test('device details retain metadata and fit outlet controls in the first viewport', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await installApiMocks(page, { populated: true })

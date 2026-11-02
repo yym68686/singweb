@@ -35,7 +35,6 @@ import type { GroupRuntime, HealthState, NodeSource, ProxyNode } from '../api/ty
 import { Badge, ToneIcon } from '../components/Badge'
 import { Button } from '../components/Button'
 import { CopyField } from '../components/CopyField'
-import { Disclosure } from '../components/Disclosure'
 import { ConfirmDialog, Dialog } from '../components/Dialog'
 import { Field, Switch, TextInput } from '../components/Form'
 import { PageHeader } from '../components/PageHeader'
@@ -248,17 +247,19 @@ function SourcesCard({ c, onImport }: { c: Catalog; onImport: () => void }) {
         ) : (
           <ul className={s.sources}>
             {sources.map((src) => (
-              <li key={src.id} className={cx(!src.enabled && s.sourceOff)}>
-                <Disclosure title={src.name} headingLevel={3} labelClassName={t.name} meta={<><SourceBadge src={src} /><span>{src.enabled ? `${src.nodeCount} 个节点` : `${src.nodeCount} 个节点已停用`}</span></>}>
-                  <div className={s.sourceDetail}>
-                    <CopyField value={src.url} label={`复制「${src.name}」的订阅地址`} />
-                    <p className={s.sourceMeta}><SourceMeta src={src} /></p>
-                    <div className={s.sourceActions}>
-                      <Button size="sm" variant="ghost" icon={RotateCw} disabled={!src.enabled} title={src.enabled ? undefined : '订阅停用中，先在设置里打开'} pending={refresh.isPending && refresh.variables === src.id} onClick={() => doRefresh(src)}>立即刷新</Button>
-                      <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setEditing(src.id)}>设置</Button>
-                    </div>
+              <li key={src.id} className={cx(s.record, !src.enabled && s.sourceOff)}>
+                <div className={s.recordMain}>
+                  <div className={s.recordTitle}>
+                    <strong>{src.name}</strong>
+                    <SourceBadge src={src} />
                   </div>
-                </Disclosure>
+                  <p className={s.sourceMeta}><SourceMeta src={src} /></p>
+                </div>
+                <div className={s.recordStat}>{src.enabled ? `${src.nodeCount} 个节点` : `${src.nodeCount} 个节点已停用`}</div>
+                <div className={s.sourceActions}>
+                  <Button size="sm" variant="ghost" icon={RotateCw} disabled={!src.enabled} title={src.enabled ? undefined : '订阅停用中，先在设置里打开'} pending={refresh.isPending && refresh.variables === src.id} onClick={() => doRefresh(src)}>刷新</Button>
+                  <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setEditing(src.id)}>设置</Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -297,14 +298,12 @@ function SourceBadge({ src }: { src: NodeSource }) {
 
 function SourceMeta({ src }: { src: NodeSource }) {
   useNow(30_000)
-  const fetched = src.lastFetchedAt ? `，上次拉取 ${timeAgo(src.lastFetchedAt)}` : ''
   if (!src.enabled) {
-    return <>停用中，它的 {src.nodeCount} 个节点不在节点池里</>
+    return <>停用中，节点不在节点池里</>
   }
   return (
     <>
-      {src.nodeCount ? `${src.nodeCount} 个节点` : '没有节点'}
-      {fetched}
+      {src.lastFetchedAt ? `上次拉取 ${timeAgo(src.lastFetchedAt)}` : '还没有拉取'}
       {src.lastError && <span className={s.sourceError}>拉取失败：{src.lastError}</span>}
     </>
   )
@@ -551,17 +550,18 @@ function SubscriptionCard() {
   const url = sub.data ? absoluteApiUrl(`/subscribe/${sub.data}`) : ''
 
   return (
-    <Disclosure title="客户端订阅链接" headingLevel={2}>
+    <section className={page.panel} aria-labelledby="client-subscription-title">
       <header className={page.panelHead}>
-        <span className={page.sub}>sing-box 客户端</span>
+        <div>
+          <h2 id="client-subscription-title" className={page.panelTitle}>客户端订阅链接</h2>
+          <span className={page.sub}>sing-box 客户端</span>
+        </div>
         <Button variant="ghost" size="sm" icon={RotateCw} disabled={!sub.data} onClick={() => setConfirm(true)}>
           重置链接
         </Button>
       </header>
       <div className={cx(page.panelBody, s.subscription)}>
-        <p className={page.sub}>
-          链接包含全部节点，请勿公开。
-        </p>
+        <p className={page.sub}>链接包含全部节点，请勿公开。</p>
         {sub.data ? (
           <CopyField value={url} label="复制 singweb 订阅链接" />
         ) : sub.error ? (
@@ -591,7 +591,7 @@ function SubscriptionCard() {
           <p>旧链接马上失效，已经导入它的客户端要重新导入新链接。装了 Agent 的设备不受影响。</p>
         </ConfirmDialog>
       )}
-    </Disclosure>
+    </section>
   )
 }
 
@@ -599,6 +599,7 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
   const update = useUpdateNode()
   const toast = useToast()
   const [confirm, setConfirm] = useState<ProxyNode | null>(null)
+  const [details, setDetails] = useState<ProxyNode | null>(null)
   const [query, setQuery] = useState('')
 
   const usage = usageOf(c)
@@ -632,26 +633,25 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
         <h2 className={page.panelTitle}>节点池</h2>
         <span className={page.sub}>{enabled} 启用 · {inUse} 在用</span>
       </header>
-      <Disclosure title="筛选节点" meta={term ? `${nodes.length} / ${c.nodes.length}` : undefined}>
+      <details className={s.filter}>
+        <summary><span>筛选节点</span>{term && <span className={s.filterCount}>{nodes.length} / {c.nodes.length}</span>}</summary>
         <SearchField value={query} onChange={setQuery} label="搜索名称、地区或地址" />
-      </Disclosure>
+      </details>
       <ul className={s.nodes} aria-label="代理节点列表">
         {nodes.map((n) => (
-          <li key={n.id}>
-            <Disclosure
-              title={n.tag}
-              headingLevel={2}
-              labelClassName={t.name}
-              meta={<>{!n.enabled && <Badge tone="offline" icon={CircleMinus}>已停用</Badge>}<span>{protocolLabel[n.protocol]} · {n.region}</span></>}
-            >
-              <div className={s.nodeDetails}>
-                <p className={cx(t.sub, 'mono')}>{n.server}:{n.port}</p>
-                <div><p className={s.detailLabel}>各设备上的探测</p><Health n={n} c={c} rts={rts} usage={usage.get(n.id)} /></div>
-                <div><p className={s.detailLabel}>正在作为出口</p><Outlets n={n} c={c} rts={rts} /></div>
-                <p className={t.sub}>来源：{n.source}</p>
-                <div className={s.enableRow}><span>启用这个节点</span><Switch checked={n.enabled} label={`启用 ${n.tag}`} pending={update.isPending && update.variables?.id === n.id} onChange={(v) => toggle(n, v)} /></div>
-              </div>
-            </Disclosure>
+          <li key={n.id} className={s.nodeRow}>
+            <div className={s.nodeIdentity}>
+              <strong>{n.tag}</strong>
+              <span className={s.nodeEndpoint}>{protocolLabel[n.protocol]} · {n.region}</span>
+            </div>
+            <div className={s.nodeSource}><span>{n.source}</span><span className="mono">{n.server}:{n.port}</span></div>
+            <div className={s.nodeStatus}>
+              {n.enabled ? <Badge tone="good" icon={CircleCheck}>启用</Badge> : <Badge tone="offline" icon={CircleMinus}>已停用</Badge>}
+            </div>
+            <div className={s.nodeActions}>
+              <Button size="sm" variant="ghost" onClick={() => setDetails(n)}>详情</Button>
+              <Switch checked={n.enabled} label={`${n.enabled ? '停用' : '启用'} ${n.tag}`} pending={update.isPending && update.variables?.id === n.id} onChange={(v) => toggle(n, v)} />
+            </div>
           </li>
         ))}
       </ul>
@@ -668,7 +668,50 @@ function NodeTable({ c, rts }: { c: Catalog; rts: GroupRuntime[] }) {
           onConfirm={() => apply(confirm, false)}
         />
       )}
+      {details && <NodeDialog n={details} c={c} rts={rts} usage={usage.get(details.id)} onClose={() => setDetails(null)} onToggle={(enabled) => toggle(details, enabled)} pending={update.isPending && update.variables?.id === details.id} />}
     </div>
+  )
+}
+
+function NodeDialog({
+  n,
+  c,
+  rts,
+  usage,
+  onClose,
+  onToggle,
+  pending,
+}: {
+  n: ProxyNode
+  c: Catalog
+  rts: GroupRuntime[]
+  usage?: Usage
+  onClose: () => void
+  onToggle: (enabled: boolean) => void
+  pending: boolean
+}) {
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={n.tag}
+      footer={<Button variant="ghost" onClick={onClose}>关闭</Button>}
+    >
+      <div className={s.nodeDetails}>
+        <dl className={page.meta}>
+          <dt>地址</dt><dd className="mono">{n.server}:{n.port}</dd>
+          <dt>协议</dt><dd>{protocolLabel[n.protocol]}</dd>
+          <dt>地区</dt><dd>{n.region}</dd>
+          <dt>来源</dt><dd>{n.source}</dd>
+        </dl>
+        <div><p className={s.detailLabel}>各设备上的探测</p><Health n={n} c={c} rts={rts} usage={usage} /></div>
+        <div><p className={s.detailLabel}>正在作为出口</p><Outlets n={n} c={c} rts={rts} /></div>
+        <div className={s.enableRow}>
+          <span>{n.enabled ? '节点已启用' : '节点已停用'}</span>
+          <Switch checked={n.enabled} label={`${n.enabled ? '停用' : '启用'} ${n.tag}`} pending={pending} onChange={onToggle} />
+        </div>
+      </div>
+    </Dialog>
   )
 }
 
